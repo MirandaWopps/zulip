@@ -7,20 +7,20 @@ import {z} from "zod";
 
 import render_confirm_delete_all_drafts from "../templates/confirm_dialog/confirm_delete_all_drafts.hbs";
 
-import * as blueslip from "./blueslip";
-import * as compose_state from "./compose_state";
-import * as confirm_dialog from "./confirm_dialog";
-import {$t, $t_html} from "./i18n";
-import {localstorage} from "./localstorage";
-import * as markdown from "./markdown";
-import * as narrow_state from "./narrow_state";
-import * as people from "./people";
-import * as stream_color from "./stream_color";
-import * as stream_data from "./stream_data";
-import * as sub_store from "./sub_store";
-import * as timerender from "./timerender";
-import * as ui_util from "./ui_util";
-import * as util from "./util";
+import * as blueslip from "./blueslip.ts";
+import * as compose_state from "./compose_state.ts";
+import * as confirm_dialog from "./confirm_dialog.ts";
+import {$t, $t_html} from "./i18n.ts";
+import {localstorage} from "./localstorage.ts";
+import * as markdown from "./markdown.ts";
+import * as narrow_state from "./narrow_state.ts";
+import * as people from "./people.ts";
+import * as stream_color from "./stream_color.ts";
+import * as stream_data from "./stream_data.ts";
+import * as sub_store from "./sub_store.ts";
+import * as timerender from "./timerender.ts";
+import * as ui_util from "./ui_util.ts";
+import * as util from "./util.ts";
 
 export let set_count = (count: number): void => {
     const $drafts_li = $(".top_left_drafts");
@@ -61,7 +61,7 @@ const draft_schema = z.intersection(
     ]),
 );
 
-type LocalStorageDraft = z.infer<typeof draft_schema>;
+export type LocalStorageDraft = z.infer<typeof draft_schema>;
 
 // The id is added to the draft in format_drafts in drafts_overlay_ui.
 // We should probably just include it in the draft object itself always?
@@ -568,7 +568,7 @@ export function remove_old_drafts(): void {
     }
 }
 
-type FormattedDraft =
+export type FormattedDraft =
     | {
           is_stream: true;
           draft_id: string;

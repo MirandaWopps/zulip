@@ -1,40 +1,43 @@
 import $ from "jquery";
 import _ from "lodash";
 import assert from "minimalistic-assert";
+import * as tippy from "tippy.js";
 
 import render_filter_topics from "../templates/filter_topics.hbs";
+import render_go_to_channel_feed_tooltip from "../templates/go_to_channel_feed_tooltip.hbs";
 import render_stream_privacy from "../templates/stream_privacy.hbs";
 import render_stream_sidebar_row from "../templates/stream_sidebar_row.hbs";
 import render_stream_subheader from "../templates/streams_subheader.hbs";
 import render_subscribe_to_more_streams from "../templates/subscribe_to_more_streams.hbs";
 
-import * as blueslip from "./blueslip";
-import * as browser_history from "./browser_history";
-import type {Filter} from "./filter";
-import * as hash_util from "./hash_util";
-import {$t} from "./i18n";
-import * as keydown_util from "./keydown_util";
-import {ListCursor} from "./list_cursor";
-import * as narrow_state from "./narrow_state";
-import * as pm_list from "./pm_list";
-import * as popovers from "./popovers";
-import * as resize from "./resize";
-import * as scroll_util from "./scroll_util";
-import {web_channel_default_view_values} from "./settings_config";
-import * as settings_data from "./settings_data";
-import * as sidebar_ui from "./sidebar_ui";
-import * as stream_data from "./stream_data";
-import * as stream_list_sort from "./stream_list_sort";
-import * as stream_topic_history from "./stream_topic_history";
-import * as stream_topic_history_util from "./stream_topic_history_util";
-import * as sub_store from "./sub_store";
-import type {StreamSubscription} from "./sub_store";
-import * as topic_list from "./topic_list";
-import * as topic_list_data from "./topic_list_data";
-import * as ui_util from "./ui_util";
-import * as unread from "./unread";
-import type {FullUnreadCountsData, StreamCountInfo} from "./unread";
-import {user_settings} from "./user_settings";
+import * as blueslip from "./blueslip.ts";
+import * as browser_history from "./browser_history.ts";
+import type {Filter} from "./filter.ts";
+import * as hash_util from "./hash_util.ts";
+import {$t} from "./i18n.ts";
+import * as keydown_util from "./keydown_util.ts";
+import {ListCursor} from "./list_cursor.ts";
+import * as narrow_state from "./narrow_state.ts";
+import * as pm_list from "./pm_list.ts";
+import * as popovers from "./popovers.ts";
+import * as resize from "./resize.ts";
+import * as scroll_util from "./scroll_util.ts";
+import {web_channel_default_view_values} from "./settings_config.ts";
+import * as settings_data from "./settings_data.ts";
+import * as sidebar_ui from "./sidebar_ui.ts";
+import * as stream_data from "./stream_data.ts";
+import * as stream_list_sort from "./stream_list_sort.ts";
+import * as stream_topic_history from "./stream_topic_history.ts";
+import * as stream_topic_history_util from "./stream_topic_history_util.ts";
+import * as sub_store from "./sub_store.ts";
+import type {StreamSubscription} from "./sub_store.ts";
+import {LONG_HOVER_DELAY} from "./tippyjs.ts";
+import * as topic_list from "./topic_list.ts";
+import * as topic_list_data from "./topic_list_data.ts";
+import * as ui_util from "./ui_util.ts";
+import * as unread from "./unread.ts";
+import type {FullUnreadCountsData, StreamCountInfo} from "./unread.ts";
+import {user_settings} from "./user_settings.ts";
 
 let pending_stream_list_rerender = false;
 let zoomed_in = false;
@@ -482,7 +485,7 @@ class StreamSidebarRow {
     }
 
     update_whether_active(): void {
-        if (stream_list_sort.has_recent_activity(this.sub) || this.sub.pin_to_top) {
+        if (this.sub.is_recently_active || this.sub.pin_to_top) {
             this.$list_item.removeClass("inactive_stream");
         } else {
             this.$list_item.addClass("inactive_stream");
@@ -827,6 +830,7 @@ export function initialize({
     build_stream_list(false);
     update_subscribe_to_more_streams_link();
     initialize_stream_cursor();
+    initialize_tippy_tooltips();
     set_event_handlers({on_stream_click});
 
     $("#stream_filters").on("click", ".show-more-topics", (e) => {
@@ -846,6 +850,24 @@ export function initialize({
     });
 }
 
+export function initialize_tippy_tooltips(): void {
+    tippy.delegate("body", {
+        target: "#stream_filters li .subscription_block .stream-name",
+        delay: LONG_HOVER_DELAY,
+        onShow(instance) {
+            const stream_id = stream_id_for_elt($(instance.reference).parents("li.narrow-filter"));
+            const current_narrow_stream_id = narrow_state.stream_id();
+            const current_topic = narrow_state.topic();
+            if (!(current_narrow_stream_id === stream_id && current_topic)) {
+                return false;
+            }
+            instance.setContent(ui_util.parse_html(render_go_to_channel_feed_tooltip()));
+            return undefined;
+        },
+        appendTo: () => document.body,
+    });
+}
+
 export function set_event_handlers({
     on_stream_click,
 }: {
@@ -860,7 +882,7 @@ export function set_event_handlers({
         e.preventDefault();
         e.stopPropagation();
 
-        const stream_id = stream_id_for_elt($(e.target).parents("li"));
+        const stream_id = stream_id_for_elt($(e.target).parents("li.narrow-filter"));
         const current_narrow_stream_id = narrow_state.stream_id();
         const current_topic = narrow_state.topic();
 

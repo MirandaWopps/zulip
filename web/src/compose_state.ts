@@ -1,9 +1,9 @@
 import $ from "jquery";
 
-import * as compose_pm_pill from "./compose_pm_pill";
-import {$t} from "./i18n";
-import * as people from "./people";
-import * as sub_store from "./sub_store";
+import * as compose_pm_pill from "./compose_pm_pill.ts";
+import {$t} from "./i18n.ts";
+import * as people from "./people.ts";
+import * as sub_store from "./sub_store.ts";
 
 let message_type: "stream" | "private" | undefined;
 let recipient_edited_manually = false;
@@ -127,7 +127,11 @@ export function set_compose_recipient_id(recipient_id: number | "direct"): void 
 }
 
 // TODO: Break out setter and getter into their own functions.
-export const topic = get_or_set("input#stream_message_recipient_topic");
+export let topic = get_or_set("input#stream_message_recipient_topic");
+
+export function rewire_topic(value: typeof topic): void {
+    topic = value;
+}
 
 export function empty_topic_placeholder(): string {
     return $t({defaultMessage: "(no topic)"});

@@ -11,6 +11,7 @@ from unittest.mock import patch
 import orjson
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.management.base import CommandError
 from django.db.models import Q, QuerySet
 from django.utils.timezone import now as timezone_now
 from typing_extensions import override
@@ -348,6 +349,11 @@ class ExportFile(ZulipTestCase):
         )
         return fixture
 
+    def get_applied_migrations_error_message(self, fixture_name: str) -> str:
+        fixture = self.fixture_data(fixture_name, "import_fixtures/check_migrations_errors")
+        fixture = fixture.format(version_placeholder=ZULIP_VERSION)
+        return fixture.strip()
+
     def verify_migration_status_json(self) -> None:
         # This function asserts that the generated migration_status.json
         # is structurally familiar for it to be used for assertion at
@@ -533,7 +539,7 @@ class RealmImportExportTest(ExportFile):
         self.assertEqual(exported_realm_user_default[0]["default_language"], "de")
 
         exported_usergroups = data["zerver_usergroup"]
-        self.assert_length(exported_usergroups, 11)
+        self.assert_length(exported_usergroups, 14)
         self.assertFalse("direct_members" in exported_usergroups[2])
         self.assertFalse("direct_subgroups" in exported_usergroups[2])
 
@@ -2060,9 +2066,9 @@ class RealmImportExportTest(ExportFile):
             )
             do_import_realm(get_output_dir(), "test-zulip")
 
-        expected_error_message = self.fixture_data(
-            "unapplied_migrations_error.txt", "import_fixtures/check_migrations_errors"
-        ).strip()
+        expected_error_message = self.get_applied_migrations_error_message(
+            "unapplied_migrations_error.txt"
+        )
         error_message = str(e.exception).strip()
         self.assertEqual(expected_error_message, error_message)
 
@@ -2085,9 +2091,9 @@ class RealmImportExportTest(ExportFile):
                 export_type=RealmExport.EXPORT_FULL_WITH_CONSENT,
             )
             do_import_realm(get_output_dir(), "test-zulip")
-        expected_error_message = self.fixture_data(
-            "extra_migrations_error.txt", "import_fixtures/check_migrations_errors"
-        ).strip()
+        expected_error_message = self.get_applied_migrations_error_message(
+            "extra_migrations_error.txt"
+        )
         error_message = str(e.exception).strip()
         self.assertEqual(expected_error_message, error_message)
 
@@ -2194,7 +2200,7 @@ class RealmImportExportTest(ExportFile):
 
         with (
             patch("zerver.lib.import_realm.ZULIP_VERSION", "8.0"),
-            self.assertRaises(Exception) as e,
+            self.assertRaises(CommandError) as e,
             self.assertLogs(level="INFO"),
         ):
             do_import_realm(
@@ -2202,9 +2208,9 @@ class RealmImportExportTest(ExportFile):
                 "test-zulip",
             )
         expected_error_message = (
-            "Export was generated on a different Zulip major version.\n"
-            f"Export={ZULIP_VERSION}\n"
-            "Server=8.0"
+            "Error: Export was generated on a different Zulip major version.\n"
+            f"Export version: {ZULIP_VERSION}\n"
+            "Server version: 8.0"
         )
         self.assertEqual(expected_error_message, str(e.exception))
 

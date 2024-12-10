@@ -142,6 +142,7 @@ ALL_ZULIP_TABLES = {
     "zerver_archivetransaction",
     "zerver_botconfigdata",
     "zerver_botstoragedata",
+    "zerver_channelemailaddress",
     "zerver_client",
     "zerver_customprofilefield",
     "zerver_customprofilefieldvalue",
@@ -157,12 +158,14 @@ ALL_ZULIP_TABLES = {
     "zerver_missedmessageemailaddress",
     "zerver_multiuseinvite",
     "zerver_multiuseinvite_streams",
+    "zerver_multiuseinvite_groups",
     "zerver_namedusergroup",
     "zerver_onboardingstep",
     "zerver_onboardingusermessage",
     "zerver_preregistrationrealm",
     "zerver_preregistrationuser",
     "zerver_preregistrationuser_streams",
+    "zerver_preregistrationuser_groups",
     "zerver_presencesequence",
     "zerver_pushdevicetoken",
     "zerver_reaction",
@@ -211,9 +214,11 @@ NON_EXPORTED_TABLES = {
     "zerver_emailchangestatus",
     "zerver_multiuseinvite",
     "zerver_multiuseinvite_streams",
+    "zerver_multiuseinvite_groups",
     "zerver_preregistrationrealm",
     "zerver_preregistrationuser",
     "zerver_preregistrationuser_streams",
+    "zerver_preregistrationuser_groups",
     "zerver_realmreactivationstatus",
     # Missed message addresses are low value to export since
     # missed-message email addresses include the server's hostname and
@@ -271,6 +276,9 @@ NON_EXPORTED_TABLES = {
     # The importer cannot trust ImageAttachment objects anyway and needs to check
     # and process images for thumbnailing on its own.
     "zerver_imageattachment",
+    # ChannelEmailAddress entries are low value to export since
+    # channel email addresses include the server's hostname.
+    "zerver_channelemailaddress",
     # For any tables listed below here, it's a bug that they are not present in the export.
 }
 
@@ -905,7 +913,6 @@ def get_realm_config() -> Config:
     stream_config = Config(
         table="zerver_stream",
         model=Stream,
-        exclude=["email_token"],
         normal_parent=realm_config,
         include_rows="realm_id__in",
     )
@@ -2255,7 +2262,6 @@ def get_single_user_config() -> Config:
         virtual_parent=recipient_config,
         id_source=("zerver_recipient", "type_id"),
         source_filter=lambda r: r["type"] == Recipient.STREAM,
-        exclude=["email_token"],
     )
 
     Config(

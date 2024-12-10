@@ -12,23 +12,23 @@ import {
 } from "text-field-edit";
 import {z} from "zod";
 
-import type {Typeahead} from "./bootstrap_typeahead";
-import * as bulleted_numbered_list_util from "./bulleted_numbered_list_util";
-import * as channel from "./channel";
-import * as common from "./common";
-import type {TypeaheadSuggestion} from "./composebox_typeahead";
-import {$t, $t_html} from "./i18n";
-import * as loading from "./loading";
-import * as markdown from "./markdown";
-import * as people from "./people";
-import * as popover_menus from "./popover_menus";
-import {postprocess_content} from "./postprocess_content";
-import * as rendered_markdown from "./rendered_markdown";
-import * as rtl from "./rtl";
-import {current_user} from "./state_data";
-import * as stream_data from "./stream_data";
-import * as user_status from "./user_status";
-import * as util from "./util";
+import type {Typeahead} from "./bootstrap_typeahead.ts";
+import * as bulleted_numbered_list_util from "./bulleted_numbered_list_util.ts";
+import * as channel from "./channel.ts";
+import * as common from "./common.ts";
+import type {TypeaheadSuggestion} from "./composebox_typeahead.ts";
+import {$t, $t_html} from "./i18n.ts";
+import * as loading from "./loading.ts";
+import * as markdown from "./markdown.ts";
+import * as people from "./people.ts";
+import * as popover_menus from "./popover_menus.ts";
+import {postprocess_content} from "./postprocess_content.ts";
+import * as rendered_markdown from "./rendered_markdown.ts";
+import * as rtl from "./rtl.ts";
+import {current_user} from "./state_data.ts";
+import * as stream_data from "./stream_data.ts";
+import * as user_status from "./user_status.ts";
+import * as util from "./util.ts";
 
 export const DEFAULT_COMPOSE_PLACEHOLDER = $t({defaultMessage: "Compose your message here"});
 
@@ -306,6 +306,7 @@ export let replace_syntax = (
     old_syntax: string,
     new_syntax: string,
     $textarea = $<HTMLTextAreaElement>("textarea#compose-textarea"),
+    ignore_caret = false,
 ): boolean => {
     // The following couple lines are needed to later restore the initial
     // logical position of the cursor after the replacement
@@ -325,6 +326,14 @@ export let replace_syntax = (
     const old_text = $textarea.val();
     replaceFieldText(util.the($textarea), old_syntax, () => new_syntax, "after-replacement");
     const new_text = $textarea.val();
+    const has_changed = old_text !== new_text;
+
+    // If the caller wants to ignore the caret position, we return early.
+    // This is useful e.g. when we are replacing content without affecting
+    // which element has focus.
+    if (ignore_caret) {
+        return has_changed;
+    }
 
     // When replacing content in a textarea, we need to move the cursor
     // to preserve its logical position if and only if the content we
@@ -344,7 +353,7 @@ export let replace_syntax = (
     }
 
     // Return if anything was actually replaced.
-    return old_text !== new_text;
+    return has_changed;
 };
 
 export function rewire_replace_syntax(value: typeof replace_syntax): void {
@@ -1199,7 +1208,7 @@ export function hide_compose_spinner(): void {
     compose_spinner_visible = false;
     $(".compose-submit-button .loader").hide();
     $(".compose-submit-button .zulip-icon-send").show();
-    $(".compose-submit-button").removeClass("disable-btn");
+    $(".compose-submit-button").removeClass("compose-button-disabled");
 }
 
 export function show_compose_spinner(): void {
@@ -1207,7 +1216,7 @@ export function show_compose_spinner(): void {
     // Always use white spinner.
     loading.show_button_spinner($(".compose-submit-button .loader"), true);
     $(".compose-submit-button .zulip-icon-send").hide();
-    $(".compose-submit-button").addClass("disable-btn");
+    $(".compose-submit-button").addClass("compose-button-disabled");
 }
 
 export function get_compose_click_target(element: HTMLElement): Element {

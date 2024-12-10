@@ -584,10 +584,9 @@ class NarrowBuilderTest(ZulipTestCase):
         self._do_add_term_test(term, "WHERE (recipient_id NOT IN (__[POSTCOMPILE_recipient_id_1]))")
 
     def test_add_term_using_in_operator_and_negated(self) -> None:
-        # negated = True should not change anything
         mute_channel(self.realm, self.user_profile, "Verona")
         term = NarrowParameter(operator="in", operand="home", negated=True)
-        self._do_add_term_test(term, "WHERE (recipient_id NOT IN (__[POSTCOMPILE_recipient_id_1]))")
+        self._do_add_term_test(term, "WHERE recipient_id IN (__[POSTCOMPILE_recipient_id_1])")
 
     def test_add_term_using_in_operator_and_all_operand(self) -> None:
         mute_channel(self.realm, self.user_profile, "Verona")
@@ -2801,9 +2800,14 @@ class GetOldMessagesTest(ZulipTestCase):
         self.make_stream("dev team", invite_only=True, history_public_to_subscribers=False)
         self.subscribe(iago, "dev team")
 
+        self.make_stream("public")
+        self.subscribe(hamlet, "public")
+
         # Test `with` operator effective when targeting a topic with
         # message which can be accessed by the user.
         msg_id = self.send_stream_message(iago, "dev team", topic_name="test")
+        msg_id_2 = self.send_stream_message(hamlet, "public", topic_name="test")
+        dm_msg_id = self.send_personal_message(hamlet, iago, "direct message")
 
         narrow = [
             dict(operator="channel", operand="dev team"),
@@ -2824,7 +2828,10 @@ class GetOldMessagesTest(ZulipTestCase):
 
         # Test `with` operator ineffective when targeting a topic with
         # message that can not be accessed by the user.
+        #
         # Since !history_public_to_subscribers, hamlet cannot view.
+        # Hence, it falls back to the narrow without the `with`
+        # operator since it can alone define a conversation.
         self.subscribe(hamlet, "dev team")
         self.login("hamlet")
 
@@ -2836,22 +2843,59 @@ class GetOldMessagesTest(ZulipTestCase):
         results = self.get_and_check_messages(dict(narrow=orjson.dumps(narrow).decode()))
         self.assert_length(results["messages"], 0)
 
-        # Same result with topic specified incorrectly
+        narrow = [
+            dict(operator="channel", operand="public"),
+            dict(operator="topic", operand="test"),
+            dict(operator="with", operand=msg_id),
+        ]
+        results = self.get_and_check_messages(dict(narrow=orjson.dumps(narrow).decode()))
+        self.assert_length(results["messages"], 1)
+        self.assertEqual(results["messages"][0]["id"], msg_id_2)
+
+        # Since `dm` operator alone can also define conversation,
+        # narrow falls back to `dm` since hamlet can't access
+        # msg_id.
+        narrow = [
+            dict(operator="dm", operand=iago.email),
+            dict(operator="with", operand=msg_id),
+        ]
+        results = self.get_and_check_messages(dict(narrow=orjson.dumps(narrow).decode()))
+        self.assert_length(results["messages"], 1)
+        self.assertEqual(results["messages"][0]["id"], dm_msg_id)
+
+        # However, if the narrow can not define conversation,
+        # and the target message is not accessible to user,
+        # then BadNarrowOperatorError is raised.
+        #
+        # narrow can't define conversation due to missing topic term.
         narrow = [
             dict(operator="channel", operand="dev team"),
-            dict(operator="topic", operand="wrong_guess"),
             dict(operator="with", operand=msg_id),
         ]
-        results = self.get_and_check_messages(dict(narrow=orjson.dumps(narrow).decode()))
-        self.assert_length(results["messages"], 0)
+        post_params = {
+            "anchor": msg_id,
+            "num_before": 0,
+            "num_after": 5,
+            "narrow": orjson.dumps(narrow).decode(),
+        }
+        result = self.client_get("/json/messages", dict(post_params))
+        self.assert_json_error(result, "Invalid narrow operator: Invalid 'with' operator")
 
-        # If just with is specified, we get messages a la combined feed,
-        # but not the target message.
+        # narrow can't define conversation due to missing channel term.
+        narrow = [
+            dict(operator="topic", operand="test"),
+            dict(operator="with", operand=msg_id),
+        ]
+        result = self.client_get("/json/messages", dict(post_params))
+        self.assert_json_error(result, "Invalid narrow operator: Invalid 'with' operator")
+
+        # narrow can't define conversation due to missing channel-topic
+        # terms or dm terms.
         narrow = [
             dict(operator="with", operand=msg_id),
         ]
-        results = self.get_and_check_messages(dict(narrow=orjson.dumps(narrow).decode()))
-        self.assertNotIn(msg_id, [message["id"] for message in results["messages"]])
+        result = self.client_get("/json/messages", dict(post_params))
+        self.assert_json_error(result, "Invalid narrow operator: Invalid 'with' operator")
 
         # Test `with` operator is effective when targeting personal
         # messages with message id, and returns messages of that narrow.
@@ -2868,7 +2912,7 @@ class GetOldMessagesTest(ZulipTestCase):
         results = self.get_and_check_messages(dict(narrow=orjson.dumps(with_narrow).decode()))
         self.assertNotIn(msg_id, [message["id"] for message in results["messages"]])
 
-        # Now switch to a user how does have access.
+        # Now switch to a user who does have access.
         self.login("iago")
         with_narrow = [
             # Important: We pass the wrong conversation.
@@ -4043,6 +4087,8 @@ class GetOldMessagesTest(ZulipTestCase):
             wide_dict,
             apply_markdown=True,
             client_gravatar=False,
+            can_access_sender=True,
+            realm_host=get_realm("zulip").host,
         )
         self.assertEqual(final_dict["content"], "<p>test content</p>")
 
@@ -4494,6 +4540,7 @@ WHERE NOT (recipient_id = %(recipient_id_1)s AND upper(subject) = upper(%(param_
         self.assertEqual(params["param_1"], "golf")
 
         mute_channel(realm, user_profile, "Verona")
+        channel_verona_id = get_recipient_id_for_channel_name(realm, "Verona")
 
         # Using a bogus channel name should be similar to using no narrow at
         # all, and we'll exclude all mutes.
@@ -4508,24 +4555,55 @@ WHERE NOT (recipient_id = %(recipient_id_1)s AND upper(subject) = upper(%(param_
         expected_query = """\
 SELECT id \n\
 FROM zerver_message \n\
-WHERE (recipient_id NOT IN (__[POSTCOMPILE_recipient_id_1])) \
-AND NOT \
-(recipient_id = %(recipient_id_2)s AND upper(subject) = upper(%(param_1)s) OR \
-recipient_id = %(recipient_id_3)s AND upper(subject) = upper(%(param_2)s))\
+WHERE NOT (recipient_id = %(recipient_id_1)s AND upper(subject) = upper(%(param_1)s) \
+OR recipient_id = %(recipient_id_2)s AND upper(subject) = upper(%(param_2)s)) \
+AND (recipient_id NOT IN (__[POSTCOMPILE_recipient_id_3]))\
 """
         self.assertEqual(get_sqlalchemy_sql(query), expected_query)
         params = get_sqlalchemy_query_params(query)
+        self.assertEqual(params["recipient_id_3"], [channel_verona_id])
         self.assertEqual(
-            params["recipient_id_1"], [get_recipient_id_for_channel_name(realm, "Verona")]
-        )
-        self.assertEqual(
-            params["recipient_id_2"], get_recipient_id_for_channel_name(realm, "Scotland")
+            params["recipient_id_1"], get_recipient_id_for_channel_name(realm, "Scotland")
         )
         self.assertEqual(params["param_1"], "golf")
         self.assertEqual(
-            params["recipient_id_3"], get_recipient_id_for_channel_name(realm, "web stuff")
+            params["recipient_id_2"], get_recipient_id_for_channel_name(realm, "web stuff")
         )
         self.assertEqual(params["param_2"], "css")
+
+        # check that followed topic is included in the query.
+        followed_topics = [
+            ["Verona", "Hi"],
+        ]
+        set_topic_visibility_policy(
+            user_profile, followed_topics, UserTopic.VisibilityPolicy.FOLLOWED
+        )
+
+        muting_conditions = exclude_muting_conditions(user_profile, narrow)
+        query = select(column("id", Integer)).select_from(table("zerver_message"))
+        query = query.where(and_(*muting_conditions))
+
+        expected_query = """\
+SELECT id \n\
+FROM zerver_message \n\
+WHERE NOT (recipient_id = %(recipient_id_1)s AND upper(subject) = upper(%(param_1)s) \
+OR recipient_id = %(recipient_id_2)s AND upper(subject) = upper(%(param_2)s)) \
+AND NOT (recipient_id IN (__[POSTCOMPILE_recipient_id_3]) \
+AND NOT (recipient_id = %(recipient_id_4)s AND upper(subject) = upper(%(param_3)s)))\
+"""
+        self.assertEqual(get_sqlalchemy_sql(query), expected_query)
+        params = get_sqlalchemy_query_params(query)
+        self.assertEqual(params["recipient_id_3"], [channel_verona_id])
+        self.assertEqual(
+            params["recipient_id_1"], get_recipient_id_for_channel_name(realm, "Scotland")
+        )
+        self.assertEqual(params["param_1"], "golf")
+        self.assertEqual(
+            params["recipient_id_2"], get_recipient_id_for_channel_name(realm, "web stuff")
+        )
+        self.assertEqual(params["param_2"], "css")
+        self.assertEqual(params["recipient_id_4"], channel_verona_id)
+        self.assertEqual(params["param_3"], "Hi")
 
     def test_get_messages_queries(self) -> None:
         query_ids = self.get_query_ids()

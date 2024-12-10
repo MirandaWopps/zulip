@@ -5,19 +5,19 @@ import {z} from "zod";
 import render_settings_deactivate_realm_modal from "../templates/confirm_dialog/confirm_deactivate_realm.hbs";
 import render_settings_admin_auth_methods_list from "../templates/settings/admin_auth_methods_list.hbs";
 
-import * as audible_notifications from "./audible_notifications";
-import * as blueslip from "./blueslip";
-import * as channel from "./channel";
-import {csrf_token} from "./csrf";
-import * as dialog_widget from "./dialog_widget";
-import * as dropdown_widget from "./dropdown_widget";
-import {$t, $t_html, get_language_name} from "./i18n";
-import * as keydown_util from "./keydown_util";
-import * as loading from "./loading";
-import * as pygments_data from "./pygments_data";
-import * as realm_icon from "./realm_icon";
-import * as realm_logo from "./realm_logo";
-import {realm_user_settings_defaults} from "./realm_user_settings_defaults";
+import * as audible_notifications from "./audible_notifications.ts";
+import * as blueslip from "./blueslip.ts";
+import * as channel from "./channel.ts";
+import {csrf_token} from "./csrf.ts";
+import * as dialog_widget from "./dialog_widget.ts";
+import * as dropdown_widget from "./dropdown_widget.ts";
+import {$t, $t_html, get_language_name} from "./i18n.ts";
+import * as keydown_util from "./keydown_util.ts";
+import * as loading from "./loading.ts";
+import * as pygments_data from "./pygments_data.ts";
+import * as realm_icon from "./realm_icon.ts";
+import * as realm_logo from "./realm_logo.ts";
+import {realm_user_settings_defaults} from "./realm_user_settings_defaults.ts";
 import {
     type MessageMoveTimeLimitSetting,
     type RealmGroupSettingName,
@@ -27,23 +27,24 @@ import {
     realm_user_settings_default_properties_schema,
     simple_dropdown_realm_settings_schema,
     stream_settings_property_schema,
-} from "./settings_components";
-import * as settings_components from "./settings_components";
-import * as settings_config from "./settings_config";
-import * as settings_data from "./settings_data";
-import * as settings_notifications from "./settings_notifications";
-import * as settings_preferences from "./settings_preferences";
-import * as settings_realm_domains from "./settings_realm_domains";
-import * as settings_ui from "./settings_ui";
-import {current_user, group_setting_value_schema, realm, realm_schema} from "./state_data";
-import type {Realm} from "./state_data";
-import * as stream_settings_data from "./stream_settings_data";
-import type {StreamSubscription} from "./sub_store";
-import type {HTMLSelectOneElement} from "./types";
-import * as ui_report from "./ui_report";
-import * as user_groups from "./user_groups";
-import type {UserGroup, UserGroupForDropdownListWidget} from "./user_groups";
-import * as util from "./util";
+} from "./settings_components.ts";
+import * as settings_components from "./settings_components.ts";
+import * as settings_config from "./settings_config.ts";
+import * as settings_data from "./settings_data.ts";
+import * as settings_notifications from "./settings_notifications.ts";
+import * as settings_preferences from "./settings_preferences.ts";
+import * as settings_realm_domains from "./settings_realm_domains.ts";
+import * as settings_ui from "./settings_ui.ts";
+import {current_user, realm, realm_schema} from "./state_data.ts";
+import type {Realm} from "./state_data.ts";
+import * as stream_settings_data from "./stream_settings_data.ts";
+import type {StreamSubscription} from "./sub_store.ts";
+import {group_setting_value_schema} from "./types.ts";
+import type {HTMLSelectOneElement} from "./types.ts";
+import * as ui_report from "./ui_report.ts";
+import * as user_groups from "./user_groups.ts";
+import type {UserGroup, UserGroupForDropdownListWidget} from "./user_groups.ts";
+import * as util from "./util.ts";
 
 const meta = {
     loaded: false,
@@ -143,11 +144,7 @@ export function enable_or_disable_group_permission_settings(): void {
         ];
         for (const setting_name of owner_editable_settings) {
             const $permission_pill_container = $(`#id_${CSS.escape(setting_name)}`);
-            $permission_pill_container.find(".input").prop("contenteditable", false);
-            $permission_pill_container.closest(".input-group").addClass("group_setting_disabled");
-            settings_components.disable_opening_typeahead_on_clicking_label(
-                $permission_pill_container.closest(".input-group"),
-            );
+            settings_components.disable_group_permission_setting($permission_pill_container);
         }
         return;
     }
@@ -155,15 +152,12 @@ export function enable_or_disable_group_permission_settings(): void {
     const $permission_pill_container_elements = $("#organization-permissions").find(
         ".pill-container",
     );
-    $permission_pill_container_elements.find(".input").prop("contenteditable", false);
-    $permission_pill_container_elements.closest(".input-group").addClass("group_setting_disabled");
-    settings_components.disable_opening_typeahead_on_clicking_label($("#organization-permissions"));
+    settings_components.disable_group_permission_setting($permission_pill_container_elements);
 }
 
 type OrganizationSettingsOptions = {
     common_policy_values: SettingOptionValueWithKey[];
     wildcard_mention_policy_values: SettingOptionValueWithKey[];
-    invite_to_realm_policy_values: SettingOptionValueWithKey[];
 };
 
 export function get_organization_settings_options(): OrganizationSettingsOptions {
@@ -173,9 +167,6 @@ export function get_organization_settings_options(): OrganizationSettingsOptions
         ),
         wildcard_mention_policy_values: settings_components.get_sorted_options_list(
             settings_config.wildcard_mention_policy_values,
-        ),
-        invite_to_realm_policy_values: settings_components.get_sorted_options_list(
-            settings_config.email_invite_to_realm_policy_values,
         ),
     };
 }
@@ -358,6 +349,14 @@ function set_create_web_public_stream_dropdown_visibility(): void {
     );
 }
 
+function disable_create_user_groups_if_on_limited_plan(): void {
+    if (!realm.zulip_plan_is_not_limited) {
+        settings_components.disable_group_permission_setting(
+            $("#id_realm_can_create_groups").closest(".input-group"),
+        );
+    }
+}
+
 export function check_disable_direct_message_initiator_group_widget(): void {
     const direct_message_permission_group_widget = settings_components.get_group_setting_widget(
         "realm_direct_message_permission_group",
@@ -372,12 +371,8 @@ export function check_disable_direct_message_initiator_group_widget(): void {
         direct_message_permission_group_widget,
     );
     if (user_groups.is_setting_group_empty(direct_message_permission_value)) {
-        $("#id_realm_direct_message_initiator_group").find(".input").prop("contenteditable", false);
-        $("#id_realm_direct_message_initiator_group")
-            .closest(".input-group")
-            .addClass("group_setting_disabled");
-        settings_components.disable_opening_typeahead_on_clicking_label(
-            $("#id_realm_direct_message_initiator_group").closest(".input-group"),
+        settings_components.disable_group_permission_setting(
+            $("#id_realm_direct_message_initiator_group"),
         );
     } else if (current_user.is_admin) {
         $("#id_realm_direct_message_initiator_group").find(".input").prop("contenteditable", true);
@@ -527,6 +522,7 @@ export function discard_realm_property_element_changes(elem: HTMLElement): void 
         case "realm_can_create_private_channel_group":
         case "realm_can_delete_any_message_group":
         case "realm_can_delete_own_message_group":
+        case "realm_can_invite_users_group":
         case "realm_can_manage_all_groups":
         case "realm_can_move_messages_between_channels_group":
         case "realm_can_move_messages_between_topics_group":
@@ -606,14 +602,19 @@ export function discard_stream_property_element_changes(
         stream_settings_property_schema.parse(property_name),
         sub,
     );
+
+    if (Object.keys(realm.server_supported_permission_settings.stream).includes(property_name)) {
+        const pill_widget = settings_components.get_group_setting_widget(property_name);
+        assert(pill_widget !== null);
+        settings_components.set_group_setting_widget_value(
+            pill_widget,
+            group_setting_value_schema.parse(property_value),
+        );
+        update_dependent_subsettings(property_name);
+        return;
+    }
+
     switch (property_name) {
-        case "can_remove_subscribers_group":
-            assert(typeof property_value === "number");
-            settings_components.set_dropdown_list_widget_setting_value(
-                property_name,
-                property_value,
-            );
-            break;
         case "stream_privacy": {
             assert(typeof property_value === "string");
             $elem.find(`input[value='${CSS.escape(property_value)}']`).prop("checked", true);
@@ -715,8 +716,8 @@ function discard_realm_settings_subsection_changes($subsection: JQuery): void {
     for (const elem of settings_components.get_subsection_property_elements($subsection)) {
         discard_realm_property_element_changes(elem);
     }
-    const $save_btn_controls = $subsection.find(".save-button-controls");
-    settings_components.change_save_button_state($save_btn_controls, "discarded");
+    const $save_button_controls = $subsection.find(".save-button-controls");
+    settings_components.change_save_button_state($save_button_controls, "discarded");
 }
 
 export function discard_stream_settings_subsection_changes(
@@ -726,8 +727,8 @@ export function discard_stream_settings_subsection_changes(
     for (const elem of settings_components.get_subsection_property_elements($subsection)) {
         discard_stream_property_element_changes(elem, sub);
     }
-    const $save_btn_controls = $subsection.find(".save-button-controls");
-    settings_components.change_save_button_state($save_btn_controls, "discarded");
+    const $save_button_controls = $subsection.find(".save-button-controls");
+    settings_components.change_save_button_state($save_button_controls, "discarded");
 }
 
 export function discard_group_settings_subsection_changes(
@@ -737,16 +738,16 @@ export function discard_group_settings_subsection_changes(
     for (const elem of settings_components.get_subsection_property_elements($subsection)) {
         discard_group_property_element_changes(elem, group);
     }
-    const $save_btn_controls = $subsection.find(".save-button-controls");
-    settings_components.change_save_button_state($save_btn_controls, "discarded");
+    const $save_button_controls = $subsection.find(".save-button-controls");
+    settings_components.change_save_button_state($save_button_controls, "discarded");
 }
 
 export function discard_realm_default_settings_subsection_changes($subsection: JQuery): void {
     for (const elem of settings_components.get_subsection_property_elements($subsection)) {
         discard_realm_default_property_element_changes(elem);
     }
-    const $save_btn_controls = $subsection.find(".save-button-controls");
-    settings_components.change_save_button_state($save_btn_controls, "discarded");
+    const $save_button_controls = $subsection.find(".save-button-controls");
+    settings_components.change_save_button_state($save_button_controls, "discarded");
 }
 
 export function deactivate_organization(e: JQuery.Event): void {
@@ -804,21 +805,21 @@ export function save_organization_settings(
     success_continuation: (() => void) | undefined = undefined,
 ): void {
     const $subsection_parent = $save_button.closest(".settings-subsection-parent");
-    const $save_btn_container = $subsection_parent.find(".save-button-controls");
+    const $save_button_container = $subsection_parent.find(".save-button-controls");
     const $failed_alert_elem = $subsection_parent.find(".subsection-failed-status p");
-    settings_components.change_save_button_state($save_btn_container, "saving");
+    settings_components.change_save_button_state($save_button_container, "saving");
     channel.patch({
         url: patch_url,
         data,
         success() {
             $failed_alert_elem.hide();
-            settings_components.change_save_button_state($save_btn_container, "succeeded");
+            settings_components.change_save_button_state($save_button_container, "succeeded");
             if (success_continuation !== undefined) {
                 success_continuation();
             }
         },
         error(xhr) {
-            settings_components.change_save_button_state($save_btn_container, "failed");
+            settings_components.change_save_button_state($save_button_container, "failed");
             $save_button.hide();
             ui_report.error($t_html({defaultMessage: "Save failed"}), xhr, $failed_alert_elem);
         },
@@ -1124,6 +1125,7 @@ export function build_page(): void {
     set_message_content_in_email_notifications_visibility();
     set_digest_emails_weekday_visibility();
     set_create_web_public_stream_dropdown_visibility();
+    disable_create_user_groups_if_on_limited_plan();
 
     register_save_discard_widget_handlers($(".admin-realm-form"), "/json/realm", false);
 

@@ -1,25 +1,24 @@
 import {z} from "zod";
 
-import {server_add_bot_schema} from "./bot_types";
-import {realm_default_settings_schema} from "./realm_user_settings_defaults";
+import {server_add_bot_schema} from "./bot_types.ts";
+import {realm_default_settings_schema} from "./realm_user_settings_defaults.ts";
 import {
     api_stream_subscription_schema,
     never_subscribed_stream_schema,
     stream_schema,
-} from "./stream_types";
-import {user_settings_schema} from "./user_settings";
-import {user_status_schema} from "./user_status_types";
+} from "./stream_types.ts";
+import {group_setting_value_schema} from "./types.ts";
+import {user_settings_schema} from "./user_settings.ts";
+import {user_status_schema} from "./user_status_types.ts";
 
 const NOT_TYPED_YET = z.unknown();
 
 const group_permission_setting_schema = z.object({
     require_system_group: z.boolean(),
     allow_internet_group: z.boolean(),
-    allow_owners_group: z.boolean(),
     allow_nobody_group: z.boolean(),
     allow_everyone_group: z.boolean(),
     default_group_name: z.string(),
-    id_field_name: z.string(),
     default_for_system_groups: z.nullable(z.string()),
     allowed_system_groups: z.array(z.string()),
 });
@@ -127,13 +126,6 @@ export const server_emoji_schema = z.object({
 
 export const realm_emoji_map_schema = z.record(server_emoji_schema);
 
-export const anonymous_group_schema = z.object({
-    direct_subgroups: z.array(z.number()),
-    direct_members: z.array(z.number()),
-});
-
-export const group_setting_value_schema = z.union([z.number(), anonymous_group_schema]);
-
 export type GroupSettingValue = z.infer<typeof group_setting_value_schema>;
 
 export const raw_user_group_schema = z.object({
@@ -150,6 +142,7 @@ export const raw_user_group_schema = z.object({
     can_leave_group: group_setting_value_schema,
     can_manage_group: group_setting_value_schema,
     can_mention_group: group_setting_value_schema,
+    can_remove_members_group: group_setting_value_schema,
     deactivated: z.boolean(),
 });
 
@@ -294,6 +287,7 @@ export const realm_schema = z.object({
     realm_can_create_web_public_channel_group: z.number(),
     realm_can_delete_any_message_group: group_setting_value_schema,
     realm_can_delete_own_message_group: group_setting_value_schema,
+    realm_can_invite_users_group: group_setting_value_schema,
     realm_can_manage_all_groups: group_setting_value_schema,
     realm_can_move_messages_between_channels_group: group_setting_value_schema,
     realm_can_move_messages_between_topics_group: group_setting_value_schema,
@@ -356,7 +350,6 @@ export const realm_schema = z.object({
     realm_inline_image_preview: z.boolean(),
     realm_inline_url_embed_preview: z.boolean(),
     realm_invite_required: z.boolean(),
-    realm_invite_to_realm_policy: z.number(),
     realm_invite_to_stream_policy: z.number(),
     realm_is_zephyr_mirror_realm: z.boolean(),
     realm_jitsi_server_url: z.nullable(z.string()),

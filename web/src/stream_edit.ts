@@ -11,44 +11,43 @@ import render_copy_email_address_modal from "../templates/stream_settings/copy_e
 import render_stream_description from "../templates/stream_settings/stream_description.hbs";
 import render_stream_settings from "../templates/stream_settings/stream_settings.hbs";
 
-import * as blueslip from "./blueslip";
-import * as browser_history from "./browser_history";
-import * as channel from "./channel";
-import * as confirm_dialog from "./confirm_dialog";
-import {show_copied_confirmation} from "./copied_tooltip";
-import * as dialog_widget from "./dialog_widget";
-import * as dropdown_widget from "./dropdown_widget";
-import {$t, $t_html} from "./i18n";
-import * as keydown_util from "./keydown_util";
-import * as narrow_state from "./narrow_state";
-import * as popovers from "./popovers";
-import {postprocess_content} from "./postprocess_content";
-import * as scroll_util from "./scroll_util";
-import * as settings_components from "./settings_components";
-import * as settings_config from "./settings_config";
-import * as settings_org from "./settings_org";
-import {current_user, realm} from "./state_data";
-import * as stream_color from "./stream_color";
-import * as stream_data from "./stream_data";
-import * as stream_edit_subscribers from "./stream_edit_subscribers";
-import * as stream_edit_toggler from "./stream_edit_toggler";
-import * as stream_settings_api from "./stream_settings_api";
-import type {SubData} from "./stream_settings_api";
-import * as stream_settings_components from "./stream_settings_components";
-import * as stream_settings_containers from "./stream_settings_containers";
-import * as stream_settings_data from "./stream_settings_data";
-import type {SettingsSubscription} from "./stream_settings_data";
+import * as blueslip from "./blueslip.ts";
+import * as browser_history from "./browser_history.ts";
+import * as channel from "./channel.ts";
+import * as confirm_dialog from "./confirm_dialog.ts";
+import {show_copied_confirmation} from "./copied_tooltip.ts";
+import * as dialog_widget from "./dialog_widget.ts";
+import {$t, $t_html} from "./i18n.ts";
+import * as keydown_util from "./keydown_util.ts";
+import * as narrow_state from "./narrow_state.ts";
+import * as popovers from "./popovers.ts";
+import {postprocess_content} from "./postprocess_content.ts";
+import * as scroll_util from "./scroll_util.ts";
+import * as settings_components from "./settings_components.ts";
+import * as settings_config from "./settings_config.ts";
+import * as settings_org from "./settings_org.ts";
+import {current_user, realm} from "./state_data.ts";
+import * as stream_color from "./stream_color.ts";
+import * as stream_data from "./stream_data.ts";
+import * as stream_edit_subscribers from "./stream_edit_subscribers.ts";
+import * as stream_edit_toggler from "./stream_edit_toggler.ts";
+import * as stream_settings_api from "./stream_settings_api.ts";
+import type {SubData} from "./stream_settings_api.ts";
+import * as stream_settings_components from "./stream_settings_components.ts";
+import * as stream_settings_containers from "./stream_settings_containers.ts";
+import * as stream_settings_data from "./stream_settings_data.ts";
+import type {SettingsSubscription} from "./stream_settings_data.ts";
 import {
+    stream_permission_group_settings_schema,
     stream_properties_schema,
     stream_specific_notification_settings_schema,
-} from "./stream_types";
-import * as stream_ui_updates from "./stream_ui_updates";
-import * as sub_store from "./sub_store";
-import type {StreamSubscription} from "./sub_store";
-import * as ui_report from "./ui_report";
-import * as user_groups from "./user_groups";
-import {user_settings} from "./user_settings";
-import * as util from "./util";
+} from "./stream_types.ts";
+import * as stream_ui_updates from "./stream_ui_updates.ts";
+import * as sub_store from "./sub_store.ts";
+import type {StreamSubscription} from "./sub_store.ts";
+import * as ui_report from "./ui_report.ts";
+import {user_settings} from "./user_settings.ts";
+import * as util from "./util.ts";
 
 type StreamSetting = {
     name: z.output<typeof settings_labels_schema>;
@@ -234,37 +233,14 @@ export function stream_settings(sub: StreamSubscription): StreamSetting[] {
     });
 }
 
-function setup_dropdown(sub: StreamSubscription, slim_sub: StreamSubscription): void {
-    const can_remove_subscribers_group_widget = new dropdown_widget.DropdownWidget({
-        widget_name: "can_remove_subscribers_group",
-        get_options: () =>
-            user_groups.get_realm_user_groups_for_dropdown_list_widget(
-                "can_remove_subscribers_group",
-                "stream",
-            ),
-        item_click_callback(event, dropdown) {
-            dropdown.hide();
-            event.preventDefault();
-            event.stopPropagation();
-            can_remove_subscribers_group_widget.render();
-            settings_components.save_discard_stream_settings_widget_status_handler(
-                $(".advanced-configurations-container"),
-                slim_sub,
-            );
-        },
-        $events_container: $("#subscription_overlay .subscription_settings"),
-        default_id: sub.can_remove_subscribers_group,
-        unique_id_type: dropdown_widget.DataTypes.NUMBER,
-        on_mount_callback(dropdown) {
-            $(dropdown.popper).css("min-width", "300px");
-            $(dropdown.popper).find(".simplebar-content").css("width", "max-content");
-        },
-    });
-    settings_components.set_dropdown_setting_widget(
-        "can_remove_subscribers_group",
-        can_remove_subscribers_group_widget,
-    );
-    can_remove_subscribers_group_widget.setup();
+function setup_group_setting_widgets(sub: StreamSubscription): void {
+    for (const setting_name of Object.keys(realm.server_supported_permission_settings.stream)) {
+        settings_components.create_stream_group_setting_widget({
+            $pill_container: $("#id_" + setting_name),
+            setting_name: stream_permission_group_settings_schema.parse(setting_name),
+            sub,
+        });
+    }
 }
 
 export function show_settings_for(node: HTMLElement): void {
@@ -318,7 +294,7 @@ export function show_settings_for(node: HTMLElement): void {
     show_subscription_settings(sub);
     settings_org.set_message_retention_setting_dropdown(sub);
     stream_ui_updates.enable_or_disable_permission_settings_in_edit_panel(sub);
-    setup_dropdown(sub, slim_sub);
+    setup_group_setting_widgets(slim_sub);
 
     $("#channels_overlay_container").on(
         "click",
@@ -619,10 +595,10 @@ export function initialize(): void {
         },
     );
 
-    $<HTMLInputElement>("input#channels_overlay_container").on(
+    $("#channels_overlay_container").on(
         "change",
-        ".sub_setting_checkbox .sub_setting_control",
-        function on_change(this: HTMLInputElement) {
+        ".sub_setting_checkbox input.sub_setting_control",
+        function on_change(this: HTMLInputElement, _event: JQuery.Event) {
             stream_setting_changed(this);
         },
     );
@@ -717,7 +693,7 @@ export function initialize(): void {
         function (this: HTMLSelectElement) {
             const message_retention_setting_dropdown_value = this.value;
             settings_components.change_element_block_display_property(
-                "stream_message_retention_custom_input",
+                "id_stream_message_retention_custom_input",
                 message_retention_setting_dropdown_value === "custom_period",
             );
         },

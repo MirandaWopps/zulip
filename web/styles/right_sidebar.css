@@ -8,7 +8,6 @@ $user_status_emoji_width: 24px;
 }
 
 .right-sidebar-items {
-    padding-right: var(--right-sidebar-padding-right);
     padding-left: var(--right-sidebar-padding-left);
 }
 
@@ -26,13 +25,10 @@ $user_status_emoji_width: 24px;
     overflow: auto;
 }
 
-.buddy-list-section-toggle.fa-caret-right {
-    width: 7px;
-    transition: rotate 140ms linear;
-    /* The triangle icon has asymmetrical padding on it, so
-       when it rotates down it would be too high without
-       this padding. */
-    padding-left: 2px;
+.buddy-list-section-toggle.zulip-icon-heading-triangle-right {
+    transition:
+        opacity 140ms linear,
+        rotate 140ms linear;
 
     &.rotate-icon-down {
         rotate: 90deg;
@@ -43,15 +39,18 @@ $user_status_emoji_width: 24px;
     }
 }
 
+.buddy-list-section-toggle {
+    grid-area: arrow;
+    justify-self: center;
+    color: var(--color-text-sidebar-heading);
+    opacity: var(--opacity-sidebar-heading-icon);
+}
+
 .buddy-list-section-container {
     margin-bottom: 10px;
 
     &.no-display {
         display: none;
-    }
-
-    .buddy-list-user-link {
-        margin-left: 5px;
     }
 }
 
@@ -182,7 +181,7 @@ $user_status_emoji_width: 24px;
         }
 
         &.user_circle_empty {
-            background-color: var(--color-background);
+            display: none;
         }
     }
 
@@ -193,7 +192,10 @@ $user_status_emoji_width: 24px;
         font-size: 14px;
         /* Override .empty-list-message !important styling */
         padding: 0 !important;
-        margin-left: 5px;
+        margin-left: calc(
+            var(--right-sidebar-toggle-width-offset) +
+                var(--right-sidebar-left-spacing)
+        );
         text-align: left;
 
         &:hover {
@@ -221,22 +223,52 @@ $user_status_emoji_width: 24px;
 }
 
 .buddy-list-subsection-header {
-    display: flex;
+    display: grid;
     align-items: center;
+    grid-template:
+        "arrow row-content scroll-buffer" var(
+            --line-height-sidebar-row-prominent
+        )
+        / var(--right-sidebar-header-icon-toggle-width) minmax(0, 1fr);
     cursor: pointer;
     background-color: var(--color-background);
-    line-height: 1;
     position: sticky;
     top: 0;
     z-index: 1;
     color: var(--color-text-default);
+    border-radius: 4px;
+    margin-right: var(--width-simplebar-scroll-hover);
+
+    &:hover {
+        background-color: var(--color-buddy-list-highlighted-user);
+        box-shadow: inset 0 0 0 1px var(--color-shadow-sidebar-row-hover);
+
+        .buddy-list-section-toggle,
+        .buddy-list-heading {
+            opacity: var(--opacity-sidebar-heading-hover);
+        }
+    }
 }
 
 .buddy-list-heading {
     user-select: none;
-    font-weight: 600;
     margin: 0;
     padding: 5px 5px 5px 0;
+    color: var(--color-text-sidebar-heading);
+    font-size: inherit;
+    font-weight: var(--font-weight-sidebar-heading);
+    letter-spacing: var(--letter-spacing-sidebar-heading);
+    opacity: var(--opacity-sidebar-heading);
+    transition: opacity 140ms linear;
+    grid-area: row-content;
+    display: flex;
+}
+
+.buddy-list-heading-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-right: 2px;
 }
 
 .buddy-list-subsection-header.no-display {
@@ -267,10 +299,9 @@ $user_status_emoji_width: 24px;
 }
 
 .user_sidebar_entry.with_avatar {
-    grid-template: "row-content" var(--line-height-sidebar-row-with-avatars) "row-content" auto / minmax(
-            0,
-            1fr
-        );
+    grid-template:
+        "row-content" var(--line-height-sidebar-row-with-avatars)
+        "row-content" auto / minmax(0, 1fr);
 
     .selectable_sidebar_block {
         margin: 4px;
@@ -365,6 +396,14 @@ $user_status_emoji_width: 24px;
         "row-content ." auto / minmax(0, 1fr) 26px;
     align-content: baseline;
     margin-right: var(--width-simplebar-scroll-hover);
+    margin-left: var(--right-sidebar-toggle-width-offset);
+    /* When both the left circle and three dot menu are present, we want
+       the space to the left of the circle to be more similar to the space
+       to the right of the three dot menu. */
+    &:not(.with_avatar) {
+        padding-left: 2px;
+        margin-left: calc(var(--right-sidebar-toggle-width-offset) - 2px);
+    }
 
     .user-name-and-status-emoji {
         display: flex;
@@ -429,6 +468,10 @@ $user_status_emoji_width: 24px;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     margin-bottom: 10px;
+    margin-left: var(--right-sidebar-heading-left-spacing);
+    /* The scrollbar doesn't extend this high, but we want the three-dot
+       menus to line up. */
+    margin-right: var(--width-simplebar-scroll-hover);
 
     #userlist-header-search {
         display: grid;
@@ -484,13 +527,92 @@ $user_status_emoji_width: 24px;
     }
 }
 
-.right-sidebar-shortcuts {
-    display: flex;
-    flex-direction: row;
-    justify-content: space-between;
+.buddy-list-user-link,
+.invite-user-shortcut {
+    margin-right: var(--width-simplebar-scroll-hover);
+    padding-left: var(--right-sidebar-left-spacing);
+    border-radius: 4px;
+
+    &:hover {
+        background: var(--color-background-sidebar-action-heading-hover);
+        box-shadow: inset 0 0 0 1px var(--color-shadow-sidebar-row-hover);
+        color: var(--color-text-sidebar-action-heading-hover);
+    }
+
+    .right-sidebar-wrappable-text-container {
+        display: grid;
+        grid-template-rows: minmax(
+            var(--line-height-sidebar-row-prominent),
+            auto
+        );
+        align-items: center;
+        color: var(--color-text-sidebar-action-heading);
+
+        .right-sidebar-wrappable-text-inner {
+            margin: var(--spacing-top-bottom-sidebar-topic-inner) 0;
+            line-height: 1;
+            text-decoration: none;
+            font-size: var(--font-size-sidebar-action-heading);
+            font-weight: var(--font-weight-sidebar-action-heading);
+            font-variant: var(--font-variant-sidebar-action-heading);
+            font-feature-settings: var(
+                --font-feature-settings-sidebar-action-heading
+            );
+        }
+        text-transform: var(--text-transform-sidebar-action-heading);
+    }
+}
+
+.buddy-list-user-link {
+    margin-left: var(--right-sidebar-toggle-width-offset);
+}
+
+.invite-user-shortcut {
     /* The margin top is calculated from a legacy 25px height,
        from a 20px line of text and 5px of margin top. We calculate
        a scaling margin-top by subtracting the em-unit line height
        from the legacy value. */
     margin-top: calc(25px - (var(--legacy-body-line-height-unitless) * 1em));
+    margin-bottom: var(--sidebar-bottom-spacing);
+    padding-left: 0;
+
+    .invite-user-link {
+        grid-template-columns:
+            var(--right-sidebar-header-icon-toggle-width)
+            minmax(0, 1fr);
+
+        .zulip-icon-user-plus {
+            justify-self: center;
+            /* Smaller icon size to align the link text with the other buddy list links */
+            font-size: 13px;
+        }
+    }
+}
+
+#buddy-list-actions-menu-popover {
+    .display-style-selector + .invite-user-link-item {
+        border-top: 1px solid var(--color-border-sidebar-subheader);
+    }
+
+    /* No hover effect on the label */
+    .display-style-selector-header:hover {
+        background: inherit;
+        cursor: default;
+    }
+
+    .popover-menu-link:not(.display-style-selector-header) {
+        display: grid;
+        grid-template: "left-icon row-content" auto / 18px 1fr;
+        align-items: center;
+
+        .popover-menu-icon,
+        .user_list_style_choice {
+            grid-area: left-icon;
+            justify-self: baseline;
+        }
+
+        .popover-menu-label {
+            grid-area: row-content;
+        }
+    }
 }

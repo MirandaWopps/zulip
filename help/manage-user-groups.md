@@ -1,5 +1,7 @@
 # Manage user groups
 
+{!cloud-paid-plans-only.md!}
+
 {!user-groups-intro.md!}
 
 {!user-groups-applications.md!}
@@ -55,18 +57,20 @@
 1. Select the **General** tab on the right.
 
 1. Under **Group permissions**, configure **Who can administer this group**, **Who
-   can mention this group**, **Who can add members to this group**, **Who can join
-   this group**, and **Who can leave this group**.
+   can mention this group**, **Who can add members to this group**, **Who can remove
+   members from this group**, **Who can join this group**, and **Who can leave this group**.
 
 {!save-changes.md!}
 
 {end_tabs}
 
-## Add groups and users to a group
+## Add users to a group
 
-You can add users to a group, or add a group to any other group. Nesting groups
-makes them easier to maintain. For example, moving a user from one team group to
-another can automatically update what department group they belong to.
+{!add-users-to-a-group.md!}
+
+## Add user groups to a group
+
+{!user-subgroups-intro.md!}
 
 {start_tabs}
 
@@ -78,18 +82,17 @@ another can automatically update what department group they belong to.
 
 1. Select the **Members** tab on the right.
 
-1. Under **Add members**, enter groups and users you want to add. You can enter
-   a `#channel` to add all subscribers to the group.
+1. Under **Add members**, enter groups you want to add.
 
-1. Click **Add**. Zulip will notify everyone who is added to the group.
+1. Click **Add**.
 
 {end_tabs}
 
-## Remove users from a user group
+## Remove user or group from a group
 
 {start_tabs}
 
-{tab|desktop-web}
+{tab|via-group-settings}
 
 {relative|group|all}
 
@@ -97,10 +100,20 @@ another can automatically update what department group they belong to.
 
 1. Select the **Members** tab on the right.
 
-1. Under **Members**, find the user you would like to remove.
+1. Under **Members**, find the user or group you would like to remove.
 
 1. Click the **Remove** button in that row. Zulip will notify everyone who is
    removed from the group.
+
+{tab|via-user-profile}
+
+{!right-sidebar-view-profile.md!}
+
+1. Select the **User groups** tab.
+
+1. Find the group you would like to remove the user from.
+
+1. Click the **Remove** button in that row.
 
 {end_tabs}
 

@@ -872,7 +872,8 @@ class PasswordResetTest(ZulipTestCase):
 
         def reset_password() -> None:
             # start the password reset process by supplying an email address
-            result = self.client_post("/accounts/password/reset/", {"email": email})
+            with self.captureOnCommitCallbacks(execute=True):
+                result = self.client_post("/accounts/password/reset/", {"email": email})
 
             # check the redirect link telling you to check mail for password reset link
             self.assertEqual(result.status_code, 302)
@@ -1025,23 +1026,10 @@ class LoginTest(ZulipTestCase):
         reset_email_visibility_to_everyone_in_zulip_realm()
 
         realm = get_realm("zulip")
-        hamlet = self.example_user("hamlet")
         stream_names = [f"stream_{i}" for i in range(40)]
         for stream_name in stream_names:
             stream = self.make_stream(stream_name, realm=realm)
             DefaultStream.objects.create(stream=stream, realm=realm)
-
-        # Make sure there's at least one recent message to be mark
-        # unread.  This prevents a bug where this test would start
-        # failing the test database was generated more than
-        # RECENT_MESSAGES_TIMEDELTA ago.
-        self.subscribe(hamlet, "stream_0")
-        self.send_stream_message(
-            hamlet,
-            "stream_0",
-            topic_name="test topic",
-            content="test message",
-        )
 
         # Clear the ContentType cache.
         ContentType.objects.clear_cache()
@@ -1052,7 +1040,7 @@ class LoginTest(ZulipTestCase):
         # to sending messages, such as getting the welcome bot, looking up
         # the alert words for a realm, etc.
         with (
-            self.assert_database_query_count(94),
+            self.assert_database_query_count(95),
             self.assert_memcached_count(14),
             self.captureOnCommitCallbacks(execute=True),
         ):

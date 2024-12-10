@@ -131,7 +131,9 @@ in the Zulip app to add more to your repertoire as needed.
   selected message (outlined in blue). Same behavior as clicking on the
   message.
 
-* **Quote and reply to message**: <kbd>></kbd>
+* **Quote message**: <kbd>></kbd>
+
+* **Forward message**: <kbd><</kbd>
 
 * **Reply directly to sender**: <kbd>Shift</kbd> + <kbd>R</kbd>
 
@@ -164,8 +166,9 @@ in the Zulip app to add more to your repertoire as needed.
 
 ## Message actions
 
-* **Edit last message**: <kbd class="arrow-key">←</kbd> — Open the last
-  editable message in the current view (if any).
+* **Edit your last message**: <kbd class="arrow-key">←</kbd> — Scroll to the
+  most recent message you are allowed to edit in the current view, and open it
+  for editing. If there are no messages you can edit, nothing happens.
 
 ### For a selected message (outlined in blue)
 

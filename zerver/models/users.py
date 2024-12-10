@@ -816,10 +816,10 @@ class UserProfile(AbstractBaseUser, PermissionsMixin, UserBaseSettings):
         from zerver.lib.user_groups import user_has_permission_for_group_setting
         from zerver.models import Realm
 
-        if policy_name not in Realm.REALM_PERMISSION_GROUP_SETTINGS and policy_name not in [
-            "invite_to_stream_policy",
-            "invite_to_realm_policy",
-        ]:
+        if (
+            policy_name not in Realm.REALM_PERMISSION_GROUP_SETTINGS
+            and policy_name != "invite_to_stream_policy"
+        ):
             raise AssertionError("Invalid policy")
 
         if policy_name in Realm.REALM_PERMISSION_GROUP_SETTINGS:
@@ -877,11 +877,14 @@ class UserProfile(AbstractBaseUser, PermissionsMixin, UserBaseSettings):
             return False
         return self.has_permission("can_create_web_public_channel_group")
 
+    def can_manage_default_streams(self) -> bool:
+        return self.is_realm_admin
+
     def can_subscribe_other_users(self) -> bool:
         return self.has_permission("invite_to_stream_policy")
 
-    def can_invite_users_by_email(self) -> bool:
-        return self.has_permission("invite_to_realm_policy")
+    def can_invite_users_by_email(self, realm: Optional["Realm"] = None) -> bool:
+        return self.has_permission("can_invite_users_group", realm)
 
     def can_create_multiuse_invite_to_realm(self) -> bool:
         return self.has_permission("create_multiuse_invite_group")
@@ -948,8 +951,23 @@ def remote_user_to_email(remote_user: str) -> str:
 post_save.connect(flush_user_profile, sender=UserProfile)
 
 
-@cache_with_key(user_profile_by_id_cache_key, timeout=3600 * 24 * 7)
-def get_user_profile_by_id(user_profile_id: int) -> UserProfile:
+def base_bulk_get_user_queryset() -> QuerySet[UserProfile]:
+    """Base select_related options for UserProfile for general user;
+    prefetches can_access_all_users_group, which is often necessary
+    for calculations of where events should be sent.
+    """
+    return UserProfile.objects.select_related(
+        "realm",
+        "realm__can_access_all_users_group",
+        "realm__can_access_all_users_group__named_user_group",
+    )
+
+
+def base_get_user_queryset() -> QuerySet[UserProfile]:
+    """Base select_related options for fetching a single user object.
+    In contrast with base_bulk_get_user_queryset, additionally fetches
+    fields that are relevant for this user sending a message.
+    """
     return UserProfile.objects.select_related(
         "realm",
         "realm__can_access_all_users_group",
@@ -959,7 +977,12 @@ def get_user_profile_by_id(user_profile_id: int) -> UserProfile:
         "realm__direct_message_permission_group",
         "realm__direct_message_permission_group__named_user_group",
         "bot_owner",
-    ).get(id=user_profile_id)
+    )
+
+
+@cache_with_key(user_profile_by_id_cache_key, timeout=3600 * 24 * 7)
+def get_user_profile_by_id(user_profile_id: int) -> UserProfile:
+    return base_get_user_queryset().get(id=user_profile_id)
 
 
 def get_user_profile_by_email(email: str) -> UserProfile:
@@ -1004,16 +1027,7 @@ def get_user_by_delivery_email(email: str, realm: "Realm") -> UserProfile:
     EMAIL_ADDRESS_VISIBILITY_ADMINS security model.  Use get_user in
     those code paths.
     """
-    return UserProfile.objects.select_related(
-        "realm",
-        "realm__can_access_all_users_group",
-        "realm__can_access_all_users_group__named_user_group",
-        "realm__direct_message_initiator_group",
-        "realm__direct_message_initiator_group__named_user_group",
-        "realm__direct_message_permission_group",
-        "realm__direct_message_permission_group__named_user_group",
-        "bot_owner",
-    ).get(delivery_email__iexact=email.strip(), realm=realm)
+    return base_get_user_queryset().get(delivery_email__iexact=email.strip(), realm=realm)
 
 
 def get_users_by_delivery_email(emails: set[str], realm: "Realm") -> QuerySet[UserProfile]:
@@ -1048,16 +1062,7 @@ def get_user(email: str, realm: "Realm") -> UserProfile:
     EMAIL_ADDRESS_VISIBILITY_ADMINS.  In those code paths, use
     get_user_by_delivery_email.
     """
-    return UserProfile.objects.select_related(
-        "realm",
-        "realm__can_access_all_users_group",
-        "realm__can_access_all_users_group__named_user_group",
-        "realm__direct_message_initiator_group",
-        "realm__direct_message_initiator_group__named_user_group",
-        "realm__direct_message_permission_group",
-        "realm__direct_message_permission_group__named_user_group",
-        "bot_owner",
-    ).get(email__iexact=email.strip(), realm=realm)
+    return base_get_user_queryset().get(email__iexact=email.strip(), realm=realm)
 
 
 def get_active_user(email: str, realm: "Realm") -> UserProfile:
@@ -1070,12 +1075,7 @@ def get_active_user(email: str, realm: "Realm") -> UserProfile:
 
 
 def get_user_profile_by_id_in_realm(uid: int, realm: "Realm") -> UserProfile:
-    return UserProfile.objects.select_related(
-        "realm",
-        "realm__can_access_all_users_group",
-        "realm__can_access_all_users_group__named_user_group",
-        "bot_owner",
-    ).get(id=uid, realm=realm)
+    return base_bulk_get_user_queryset().get(id=uid, realm=realm)
 
 
 def get_active_user_profile_by_id_in_realm(uid: int, realm: "Realm") -> UserProfile:

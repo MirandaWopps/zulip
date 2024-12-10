@@ -1,26 +1,28 @@
 import $ from "jquery";
 import assert from "minimalistic-assert";
+import type * as tippy from "tippy.js";
 import {z} from "zod";
 
-import * as fenced_code from "../shared/src/fenced_code";
+import * as fenced_code from "../shared/src/fenced_code.ts";
 
-import * as channel from "./channel";
-import * as compose_actions from "./compose_actions";
-import * as compose_state from "./compose_state";
-import * as compose_ui from "./compose_ui";
-import * as copy_and_paste from "./copy_and_paste";
-import * as hash_util from "./hash_util";
-import {$t} from "./i18n";
-import * as inbox_ui from "./inbox_ui";
-import * as inbox_util from "./inbox_util";
-import * as message_lists from "./message_lists";
-import type {Message} from "./message_store";
-import * as narrow_state from "./narrow_state";
-import * as people from "./people";
-import * as recent_view_ui from "./recent_view_ui";
-import * as recent_view_util from "./recent_view_util";
-import * as stream_data from "./stream_data";
-import * as unread_ops from "./unread_ops";
+import * as channel from "./channel.ts";
+import * as compose_actions from "./compose_actions.ts";
+import * as compose_recipient from "./compose_recipient.ts";
+import * as compose_state from "./compose_state.ts";
+import * as compose_ui from "./compose_ui.ts";
+import * as copy_and_paste from "./copy_and_paste.ts";
+import * as hash_util from "./hash_util.ts";
+import {$t} from "./i18n.ts";
+import * as inbox_ui from "./inbox_ui.ts";
+import * as inbox_util from "./inbox_util.ts";
+import * as message_lists from "./message_lists.ts";
+import type {Message} from "./message_store.ts";
+import * as narrow_state from "./narrow_state.ts";
+import * as people from "./people.ts";
+import * as recent_view_ui from "./recent_view_ui.ts";
+import * as recent_view_util from "./recent_view_util.ts";
+import * as stream_data from "./stream_data.ts";
+import * as unread_ops from "./unread_ops.ts";
 
 export let respond_to_message = (opts: {
     keep_composebox_empty?: boolean;
@@ -192,7 +194,7 @@ export function rewire_selection_within_message_id(
     selection_within_message_id = value;
 }
 
-function get_quote_target(opts: {message_id?: number; quote_content?: string}): {
+function get_quote_target(opts: {message_id?: number; quote_content?: string | undefined}): {
     message_id: number;
     message: Message;
     quote_content: string | undefined;
@@ -227,12 +229,13 @@ function get_quote_target(opts: {message_id?: number; quote_content?: string}): 
     return {message_id, message, quote_content};
 }
 
-export function quote_and_reply(opts: {
+export function quote_message(opts: {
     message_id: number;
-    quote_content?: string;
+    quote_content?: string | undefined;
     keep_composebox_empty?: boolean;
     reply_type?: "personal";
     trigger?: string;
+    forward_message?: boolean;
 }): void {
     const {message_id, message, quote_content} = get_quote_target(opts);
     const quoting_placeholder = $t({defaultMessage: "[Quoting…]"});
@@ -240,25 +243,45 @@ export function quote_and_reply(opts: {
     // If the last compose type textarea focused on is still in the DOM, we add
     // the quote in that textarea, else we default to the compose box.
     const last_focused_compose_type_input = compose_state.get_last_focused_compose_type_input();
-    const $textarea = last_focused_compose_type_input?.isConnected
-        ? $(last_focused_compose_type_input)
-        : $<HTMLTextAreaElement>("textarea#compose-textarea");
+    const $textarea =
+        last_focused_compose_type_input?.isConnected && !opts.forward_message
+            ? $(last_focused_compose_type_input)
+            : $<HTMLTextAreaElement>("textarea#compose-textarea");
 
-    if ($textarea.attr("id") === "compose-textarea" && !compose_state.has_message_content()) {
-        // The user has not started typing a message,
-        // but is quoting into the compose box,
-        // so we will re-open the compose box.
-        // (If you did re-open the compose box, you
-        // are prone to glitches where you select the
-        // text, plus it's a complicated codepath that
-        // can have other unintended consequences.)
-        respond_to_message({
-            ...opts,
-            keep_composebox_empty: true,
+    if (opts.forward_message) {
+        let topic = "";
+        let stream_id: number | undefined;
+        if (message.is_stream) {
+            topic = message.topic;
+            stream_id = message.stream_id;
+        }
+
+        compose_actions.start({
+            message_type: message.type,
+            topic,
+            keep_composebox_empty: opts.keep_composebox_empty,
+            content: quoting_placeholder,
+            stream_id,
+            private_message_recipient: people.pm_reply_to(message) ?? "",
         });
-    }
+        compose_recipient.toggle_compose_recipient_dropdown();
+    } else {
+        if ($textarea.attr("id") === "compose-textarea" && !compose_state.has_message_content()) {
+            // The user has not started typing a message,
+            // but is quoting into the compose box,
+            // so we will re-open the compose box.
+            // (If you did re-open the compose box, you
+            // are prone to glitches where you select the
+            // text, plus it's a complicated codepath that
+            // can have other unintended consequences.)
+            respond_to_message({
+                ...opts,
+                keep_composebox_empty: true,
+            });
+        }
 
-    compose_ui.insert_syntax_and_focus(quoting_placeholder, $textarea, "block");
+        compose_ui.insert_syntax_and_focus(quoting_placeholder, $textarea, "block");
+    }
 
     function replace_content(message: Message, raw_content: string): void {
         // Final message looks like:
@@ -277,8 +300,18 @@ export function quote_and_reply(opts: {
         const fence = fenced_code.get_unused_fence(raw_content);
         content += `${fence}quote\n${raw_content}\n${fence}`;
 
-        compose_ui.replace_syntax(quoting_placeholder, content, $textarea);
+        compose_ui.replace_syntax(quoting_placeholder, content, $textarea, opts.forward_message);
         compose_ui.autosize_textarea($textarea);
+
+        if (!opts.forward_message) {
+            return;
+        }
+        const select_recipient_widget: tippy.ReferenceElement | undefined = $(
+            "#compose_select_recipient_widget",
+        )[0];
+        if (select_recipient_widget !== undefined) {
+            void select_recipient_widget._tippy?.popperInstance?.update();
+        }
     }
 
     if (message && quote_content) {

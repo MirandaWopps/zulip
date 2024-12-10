@@ -1,12 +1,12 @@
 import $ from "jquery";
 import assert from "minimalistic-assert";
 
-import * as blueslip from "./blueslip";
-import * as message_lists from "./message_lists";
-import * as message_scroll_state from "./message_scroll_state";
-import type {Message} from "./message_store";
-import * as rows from "./rows";
-import * as util from "./util";
+import * as blueslip from "./blueslip.ts";
+import * as message_lists from "./message_lists.ts";
+import * as message_scroll_state from "./message_scroll_state.ts";
+import type {Message} from "./message_store.ts";
+import * as rows from "./rows.ts";
+import * as util from "./util.ts";
 
 export type MessageViewportInfo = {
     visible_top: number;
@@ -540,6 +540,11 @@ export function maybe_scroll_to_selected(): void {
         scroll_to_selected();
         scroll_to_selected_planned = false;
     }
+}
+
+export function can_scroll(): boolean {
+    const full_height = util.the($scroll_container).scrollHeight;
+    return full_height > window.innerHeight;
 }
 
 export function initialize(): void {

@@ -1,28 +1,28 @@
 import assert from "minimalistic-assert";
 
-import * as blueslip from "./blueslip";
-import * as color_data from "./color_data";
-import {FoldDict} from "./fold_dict";
-import {page_params} from "./page_params";
-import * as peer_data from "./peer_data";
-import type {User} from "./people";
-import * as people from "./people";
-import * as settings_config from "./settings_config";
-import * as settings_data from "./settings_data";
-import type {StateData} from "./state_data";
-import {current_user, realm} from "./state_data";
-import type {StreamPostPolicy} from "./stream_types";
-import * as sub_store from "./sub_store";
+import * as blueslip from "./blueslip.ts";
+import * as color_data from "./color_data.ts";
+import {FoldDict} from "./fold_dict.ts";
+import {page_params} from "./page_params.ts";
+import * as peer_data from "./peer_data.ts";
+import type {User} from "./people.ts";
+import * as people from "./people.ts";
+import * as settings_config from "./settings_config.ts";
+import * as settings_data from "./settings_data.ts";
+import type {GroupSettingValue, StateData} from "./state_data.ts";
+import {current_user, realm} from "./state_data.ts";
+import type {StreamPermissionGroupSetting, StreamPostPolicy} from "./stream_types.ts";
+import * as sub_store from "./sub_store.ts";
 import type {
     ApiStreamSubscription,
     NeverSubscribedStream,
     Stream,
     StreamSpecificNotificationSettings,
     StreamSubscription,
-} from "./sub_store";
-import * as user_groups from "./user_groups";
-import {user_settings} from "./user_settings";
-import * as util from "./util";
+} from "./sub_store.ts";
+import * as user_groups from "./user_groups.ts";
+import {user_settings} from "./user_settings.ts";
+import * as util from "./util.ts";
 
 // Type for the parameter of `create_sub_from_server_data` function.
 type ApiGenericStreamSubscription = NeverSubscribedStream | ApiStreamSubscription;
@@ -424,11 +424,12 @@ export function update_message_retention_setting(
     sub.message_retention_days = message_retention_days;
 }
 
-export function update_can_remove_subscribers_group_id(
+export function update_stream_permission_group_setting(
+    setting_name: StreamPermissionGroupSetting,
     sub: StreamSubscription,
-    can_remove_subscribers_group_id: number,
+    group_setting: GroupSettingValue,
 ): void {
-    sub.can_remove_subscribers_group = can_remove_subscribers_group_id;
+    sub[setting_name] = group_setting;
 }
 
 export function receives_notifications(
@@ -515,11 +516,35 @@ export function can_preview(sub: StreamSubscription): boolean {
 }
 
 export function can_change_permissions(sub: StreamSubscription): boolean {
-    return current_user.is_admin && (!sub.invite_only || sub.subscribed);
+    // Whether the current user has permission to administer this stream.
+    // Organisation admins have this permission regardless of whether
+    // they are part of can_administer_channel_group. Non-subscribers with
+    // these permission can edit name and description of a private channel
+    // without being subscribed to it.
+
+    if (sub.invite_only && !sub.subscribed) {
+        return false;
+    }
+
+    if (current_user.is_admin) {
+        return true;
+    }
+
+    return user_groups.is_user_in_setting_group(
+        sub.can_administer_channel_group,
+        people.my_current_user_id(),
+    );
 }
 
-export function can_edit_description(): boolean {
-    return current_user.is_admin;
+export function can_edit_description(sub: StreamSubscription): boolean {
+    if (current_user.is_admin) {
+        return true;
+    }
+
+    return user_groups.is_user_in_setting_group(
+        sub.can_administer_channel_group,
+        people.my_current_user_id(),
+    );
 }
 
 export function can_view_subscribers(sub: StreamSubscription): boolean {
@@ -569,7 +594,7 @@ export function can_unsubscribe_others(sub: StreamSubscription): boolean {
         return true;
     }
 
-    return user_groups.is_user_in_group(
+    return user_groups.is_user_in_setting_group(
         sub.can_remove_subscribers_group,
         people.my_current_user_id(),
     );
@@ -864,6 +889,7 @@ export function get_options_for_dropdown_widget(): {
     stream: StreamSubscription;
 }[] {
     return subscribed_subs()
+        .filter((stream) => !stream.is_archived)
         .map((stream) => ({
             name: stream.name,
             unique_id: stream.stream_id,

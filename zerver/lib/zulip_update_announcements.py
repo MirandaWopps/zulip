@@ -52,14 +52,14 @@ announcements, they can be disabled. [Learn more]({zulip_update_announcements_he
 the formatting, including links, bulleted lists, bold, italics, and more.
 Pasting as plain text remains an alternative option. [Learn
 more]({keyboard_shortcuts_basics_help_url}).
-- To [quote and reply]({quote_and_reply_help_url}) to part of a message, you can
+- To [quote and reply]({quote_message_help_url}) to part of a message, you can
 now select the part that you want to quote.
 - You can now hide the user list in the right sidebar to reduce distraction.
 [Learn more]({user_list_help_url}).
 """.format(
             keyboard_shortcuts_basics_help_url="/help/keyboard-shortcuts#the-basics",
             user_list_help_url="/help/user-list",
-            quote_and_reply_help_url="/help/quote-and-reply",
+            quote_message_help_url="/help/quote-and-reply",
         ),
     ),
     ZulipUpdateAnnouncement(
@@ -219,6 +219,38 @@ DIRECT MESSAGES to [start a DM]({starting_a_new_direct_message_help_url}).
             cloud_plans_url="/plans/",
             file_upload_limits_help_url="/help/share-and-upload-files#file-upload-limits",
             max_file_upload_size=settings.MAX_FILE_UPLOAD_SIZE,
+        ),
+    ),
+    ZulipUpdateAnnouncement(
+        level=10,
+        message=(
+            """
+- Most permissions in Zulip can now be granted to any combination of
+  [roles]({roles_and_permissions_help_url}), [groups]({user_groups_help_url}),
+  and individual [users]({users_help_url}). Previously, permissions were
+  configurable only by user role."""
+            + (
+                """
+- Creating new user groups now requires a Zulip Cloud Standard or Zulip Cloud
+  Plus [plan]({cloud_plans_url}).
+"""
+                if settings.CORPORATE_ENABLED
+                else ""
+            )
+            + """
+
+**Web and desktop updates**
+- To provide more information, long topic names are now shown on two lines in
+  the left sidebar.
+- Pasted [message links]({message_links_help_url}) are now automatically
+  converted into nicely formatted links.
+"""
+        ).format(
+            roles_and_permissions_help_url="/help/roles-and-permissions",
+            user_groups_help_url="/help/user-groups",
+            users_help_url="/help/manage-a-user",
+            cloud_plans_url="/plans/",
+            message_links_help_url="/help/link-to-a-message-or-conversation#get-a-link-to-a-specific-message",
         ),
     ),
 ]

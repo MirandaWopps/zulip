@@ -1,16 +1,17 @@
 import assert from "minimalistic-assert";
 import {z} from "zod";
 
-import * as blueslip from "./blueslip";
-import {FoldDict} from "./fold_dict";
-import * as group_permission_settings from "./group_permission_settings";
-import {$t} from "./i18n";
-import {page_params} from "./page_params";
-import * as settings_config from "./settings_config";
-import type {GroupPermissionSetting, GroupSettingValue, StateData} from "./state_data";
-import {current_user, raw_user_group_schema, realm} from "./state_data";
-import type {UserOrMention} from "./typeahead_helper";
-import type {UserGroupUpdateEvent} from "./types";
+import * as blueslip from "./blueslip.ts";
+import {FoldDict} from "./fold_dict.ts";
+import * as group_permission_settings from "./group_permission_settings.ts";
+import {$t} from "./i18n.ts";
+import {page_params} from "./page_params.ts";
+import * as settings_config from "./settings_config.ts";
+import type {GroupPermissionSetting, GroupSettingValue, StateData} from "./state_data.ts";
+import {current_user, raw_user_group_schema, realm} from "./state_data.ts";
+import type {UserOrMention} from "./typeahead_helper.ts";
+import type {UserGroupUpdateEvent} from "./types.ts";
+import * as util from "./util.ts";
 
 type UserGroupRaw = z.infer<typeof raw_user_group_schema>;
 
@@ -56,6 +57,7 @@ export function add(user_group_raw: UserGroupRaw): UserGroup {
         can_leave_group: user_group_raw.can_leave_group,
         can_manage_group: user_group_raw.can_manage_group,
         can_mention_group: user_group_raw.can_mention_group,
+        can_remove_members_group: user_group_raw.can_remove_members_group,
         deactivated: user_group_raw.deactivated,
     };
 
@@ -126,6 +128,12 @@ export function update(event: UserGroupUpdateEvent): void {
 
     if (event.data.can_leave_group !== undefined) {
         group.can_leave_group = event.data.can_leave_group;
+        user_group_name_dict.delete(group.name);
+        user_group_name_dict.set(group.name, group);
+    }
+
+    if (event.data.can_remove_members_group !== undefined) {
+        group.can_remove_members_group = event.data.can_remove_members_group;
         user_group_name_dict.delete(group.name);
         user_group_name_dict.set(group.name, group);
     }
@@ -286,9 +294,7 @@ export function is_setting_group_empty(setting_group: GroupSettingValue): boolea
 
 export function get_user_groups_of_user(user_id: number): UserGroup[] {
     const user_groups_realm = get_realm_user_groups();
-    const groups_of_user = user_groups_realm.filter((group) =>
-        is_direct_member_of(user_id, group.id),
-    );
+    const groups_of_user = user_groups_realm.filter((group) => is_user_in_group(group.id, user_id));
     return groups_of_user;
 }
 
@@ -309,6 +315,21 @@ export function get_recursive_subgroups(target_user_group: UserGroup): Set<numbe
         }
     }
     return subgroup_ids;
+}
+
+export function is_subgroup_of_target_group(target_group_id: number, subgroup_id: number): boolean {
+    const target_user_group = get_user_group_from_id(target_group_id);
+    const direct_subgroup_ids = new Set(target_user_group.direct_subgroup_ids);
+    if (direct_subgroup_ids.has(subgroup_id)) {
+        return true;
+    }
+
+    const recursive_subgroup_ids = get_recursive_subgroups(target_user_group);
+    if (recursive_subgroup_ids === undefined) {
+        return false;
+    }
+
+    return recursive_subgroup_ids.has(subgroup_id);
 }
 
 export function get_recursive_group_members(target_user_group: UserGroup): Set<number> {
@@ -375,6 +396,13 @@ export function get_direct_subgroups_of_group(target_user_group: UserGroup): Use
     return direct_subgroups;
 }
 
+export function convert_name_to_display_name_for_groups(user_groups: UserGroup[]): UserGroup[] {
+    return user_groups.map((user_group) => ({
+        ...user_group,
+        name: get_display_group_name(user_group.name),
+    }));
+}
+
 export function is_user_in_group(
     user_group_id: number,
     user_id: number,
@@ -404,6 +432,42 @@ export function is_user_in_group(
         }
     }
     return false;
+}
+
+export function is_user_in_any_group(
+    user_group_ids: number[],
+    user_id: number,
+    direct_member_only = false,
+): boolean {
+    for (const group_id of user_group_ids) {
+        if (is_user_in_group(group_id, user_id, direct_member_only)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+export function get_associated_subgroups(user_group: UserGroup, user_id: number): UserGroup[] {
+    const subgroup_ids = get_recursive_subgroups(user_group)!;
+    if (subgroup_ids === undefined) {
+        return [];
+    }
+
+    const subgroups = [];
+    for (const group_id of subgroup_ids) {
+        if (is_direct_member_of(user_id, group_id)) {
+            subgroups.push(user_group_by_id_dict.get(group_id)!);
+        }
+    }
+    return subgroups;
+}
+
+export function format_group_list(user_groups: UserGroup[]): string {
+    return util.format_array_as_list(
+        user_groups.map((user_group) => user_group.name),
+        "short",
+        "conjunction",
+    );
 }
 
 export function is_user_in_setting_group(
@@ -441,19 +505,10 @@ export function check_system_user_group_allowed_for_setting(
     group_setting_config: GroupPermissionSetting,
     for_new_settings_ui: boolean,
 ): boolean {
-    const {
-        allow_internet_group,
-        allow_owners_group,
-        allow_nobody_group,
-        allow_everyone_group,
-        allowed_system_groups,
-    } = group_setting_config;
+    const {allow_internet_group, allow_nobody_group, allow_everyone_group, allowed_system_groups} =
+        group_setting_config;
 
     if (!allow_internet_group && group_name === "role:internet") {
-        return false;
-    }
-
-    if (!allow_owners_group && group_name === "role:owners") {
         return false;
     }
 

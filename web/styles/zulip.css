@@ -462,7 +462,8 @@ body.has-overlay-scrollbar {
                 --color-navbar-spectator-medium-attention-brand-button-background
             );
 
-            &:hover {
+            &:hover,
+            &:focus {
                 color: var(
                     --color-navbar-spectator-medium-attention-brand-button-text
                 );
@@ -550,7 +551,7 @@ body.has-overlay-scrollbar {
     }
 
     .column-right .right-sidebar {
-        padding-left: 10px;
+        padding-left: 5px;
         width: 240px;
     }
 
@@ -619,7 +620,7 @@ li,
     line-height: inherit;
 }
 
-.btn {
+.bootstrap-btn {
     font-size: inherit;
     height: auto;
     line-height: 100%;
@@ -648,7 +649,7 @@ li,
     right: 5px;
     height: 1em;
     backdrop-filter: blur(20px);
-    outline: 1px solid var(--color-copy-btn-square-bg-active);
+    outline: 1px solid var(--color-copy-button-square-bg-active);
 }
 
 #copy_generated_link_container {

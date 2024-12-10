@@ -310,13 +310,12 @@ def next_invoice_date(plan: CustomerPlan) -> datetime | None:
     if plan.status == CustomerPlan.ENDED:
         return None
     assert plan.next_invoice_date is not None  # for mypy
-    months_per_period = 1
-    periods = 1
-    dt = plan.billing_cycle_anchor
-    while dt <= plan.next_invoice_date:
-        dt = add_months(plan.billing_cycle_anchor, months_per_period * periods)
-        periods += 1
-    return dt
+    months = 1
+    candidate_invoice_date = plan.billing_cycle_anchor
+    while candidate_invoice_date <= plan.next_invoice_date:
+        candidate_invoice_date = add_months(plan.billing_cycle_anchor, months)
+        months += 1
+    return candidate_invoice_date
 
 
 def get_amount_to_credit_for_plan_tier_change(
@@ -733,7 +732,7 @@ class BillingSession(ABC):
         pass
 
     @abstractmethod
-    def current_count_for_billed_licenses(self, event_time: datetime = timezone_now()) -> int:
+    def current_count_for_billed_licenses(self, event_time: datetime | None = None) -> int:
         pass
 
     @abstractmethod
@@ -1496,17 +1495,41 @@ class BillingSession(ABC):
             current_plan.save(update_fields=["status", "next_invoice_date"])
             return f"Fixed price {required_plan_tier_name} plan scheduled to start on {current_plan.end_date.date()}."
 
+        # TODO: Use normal 'pay by invoice' flow for fixed-price plan offers,
+        # which requires handling automated license management for these plan
+        # offers via that flow.
         if sent_invoice_id is not None:
             sent_invoice_id = sent_invoice_id.strip()
-            # Verify 'sent_invoice_id' before storing in database.
+            # Verify 'sent_invoice_id' and 'stripe_customer_id' before
+            # storing in database.
             try:
                 invoice = stripe.Invoice.retrieve(sent_invoice_id)
                 if invoice.status != "open":
                     raise SupportRequestError(
                         "Invoice status should be open. Please verify sent_invoice_id."
                     )
+                invoice_customer_id = invoice.customer
+                if not invoice_customer_id:  # nocoverage
+                    raise SupportRequestError(
+                        "Invoice missing Stripe customer ID. Please review invoice."
+                    )
+                if customer.stripe_customer_id and customer.stripe_customer_id != str(
+                    invoice_customer_id
+                ):  # nocoverage
+                    raise SupportRequestError(
+                        "Invoice Stripe customer ID does not match. Please attach invoice to correct customer in Stripe."
+                    )
             except Exception as e:
                 raise SupportRequestError(str(e))
+
+            if customer.stripe_customer_id is None:
+                # Note this is an exception to our normal support panel actions,
+                # which do not set any stripe billing information. Since these
+                # invoices are manually created first in stripe, it's important
+                # for our billing page to have our Customer object correctly
+                # linked to the customer in stripe.
+                customer.stripe_customer_id = str(invoice_customer_id)
+                customer.save(update_fields=["stripe_customer_id"])
 
             fixed_price_plan_params["sent_invoice_id"] = sent_invoice_id
             Invoice.objects.create(
@@ -1588,8 +1611,10 @@ class BillingSession(ABC):
                         "property": "next_invoice_date",
                     }
                     plan.next_invoice_date = new_end_date
-                # Currently, we send a reminder email 2 months before the end date.
-                # Reset it when we are extending the end_date.
+                # We send a reminder email 2 months before the end date of
+                # fixed-price plans so that billing support can follow-up
+                # about continuing service. Reset it when we are extending
+                # the end_date.
                 reminder_to_review_plan_email_sent_changed_extra_data = None
                 if (
                     plan.reminder_to_review_plan_email_sent
@@ -1635,9 +1660,7 @@ class BillingSession(ABC):
                     )
 
                 return f"Current plan for {self.billing_entity_display_name} updated to end on {end_date_string}."
-        raise SupportRequestError(
-            f"No current plan for {self.billing_entity_display_name}."
-        )  # nocoverage
+        raise SupportRequestError(f"No current plan for {self.billing_entity_display_name}.")
 
     def generate_stripe_invoice(
         self,
@@ -1792,7 +1815,7 @@ class BillingSession(ABC):
         )
 
         # TODO: The correctness of this relies on user creation, deactivation, etc being
-        # in a transaction.atomic() with the relevant RealmAuditLog entries
+        # in a transaction.atomic block with the relevant RealmAuditLog entries
         with transaction.atomic(durable=True):
             # We get the current license count here in case the number of billable
             # licenses has changed since the upgrade process began.
@@ -3660,7 +3683,7 @@ class BillingSession(ABC):
         customer: Customer,
         tier: int,
         licenses: int | None = None,
-        event_time: datetime = timezone_now(),
+        event_time: datetime | None = None,
     ) -> int:
         if licenses is not None and customer.exempt_from_license_number_check:
             return licenses
@@ -3927,7 +3950,7 @@ class RealmBillingSession(BillingSession):
         return self.user.delivery_email
 
     @override
-    def current_count_for_billed_licenses(self, event_time: datetime = timezone_now()) -> int:
+    def current_count_for_billed_licenses(self, event_time: datetime | None = None) -> int:
         return get_latest_seat_count(self.realm)
 
     @override
@@ -4292,7 +4315,7 @@ class RemoteRealmBillingSession(BillingSession):
         return self.remote_billing_user.email
 
     @override
-    def current_count_for_billed_licenses(self, event_time: datetime = timezone_now()) -> int:
+    def current_count_for_billed_licenses(self, event_time: datetime | None = None) -> int:
         if has_stale_audit_log(self.remote_realm.server):
             raise MissingDataError
         remote_realm_counts = get_remote_realm_guest_and_non_guest_count(
@@ -4737,7 +4760,7 @@ class RemoteServerBillingSession(BillingSession):
         return self.remote_billing_user.email
 
     @override
-    def current_count_for_billed_licenses(self, event_time: datetime = timezone_now()) -> int:
+    def current_count_for_billed_licenses(self, event_time: datetime | None = None) -> int:
         if has_stale_audit_log(self.remote_server):
             raise MissingDataError
         remote_server_counts = get_remote_server_guest_and_non_guest_count(
@@ -5365,29 +5388,29 @@ def invoice_plans_as_needed(event_time: datetime | None = None) -> None:
 
         assert plan.next_invoice_date is not None  # for mypy
 
-        if remote_server:
-            if (
-                plan.fixed_price is not None
-                and not plan.reminder_to_review_plan_email_sent
-                and plan.end_date is not None  # for mypy
-                # The max gap between two months is 62 days. (1 Jul - 1 Sep)
-                and plan.end_date - plan.next_invoice_date <= timedelta(days=62)
-            ):
-                context = {
-                    "billing_entity": billing_session.billing_entity_display_name,
-                    "end_date": plan.end_date.strftime("%Y-%m-%d"),
-                    "support_url": billing_session.support_url(),
-                    "notice_reason": "fixed_price_plan_ends_soon",
-                }
-                send_email(
-                    "zerver/emails/internal_billing_notice",
-                    to_emails=[BILLING_SUPPORT_EMAIL],
-                    from_address=FromAddress.tokenized_no_reply_address(),
-                    context=context,
-                )
-                plan.reminder_to_review_plan_email_sent = True
-                plan.save(update_fields=["reminder_to_review_plan_email_sent"])
+        if (
+            plan.fixed_price is not None
+            and not plan.reminder_to_review_plan_email_sent
+            and plan.end_date is not None  # for mypy
+            # The max gap between two months is 62 days. (1 Jul - 1 Sep)
+            and plan.end_date - plan.next_invoice_date <= timedelta(days=62)
+        ):
+            context = {
+                "billing_entity": billing_session.billing_entity_display_name,
+                "end_date": plan.end_date.strftime("%Y-%m-%d"),
+                "support_url": billing_session.support_url(),
+                "notice_reason": "fixed_price_plan_ends_soon",
+            }
+            send_email(
+                "zerver/emails/internal_billing_notice",
+                to_emails=[BILLING_SUPPORT_EMAIL],
+                from_address=FromAddress.tokenized_no_reply_address(),
+                context=context,
+            )
+            plan.reminder_to_review_plan_email_sent = True
+            plan.save(update_fields=["reminder_to_review_plan_email_sent"])
 
+        if remote_server:
             free_plan_with_no_next_plan = (
                 not plan.is_a_paid_plan() and plan.status == CustomerPlan.ACTIVE
             )

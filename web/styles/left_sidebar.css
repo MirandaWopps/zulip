@@ -412,11 +412,45 @@
     }
 }
 
+#subscribe-to-more-streams {
+    /* --left-sidebar-bottom-scrolling-buffer is to prevent the row from
+       being cut off, and --sidebar-bottom-spacing is extra padding. */
+    margin: 5px var(--left-sidebar-right-margin)
+        calc(
+            var(--left-sidebar-bottom-scrolling-buffer) +
+                var(--sidebar-bottom-spacing)
+        )
+        0;
+    padding-left: var(--left-sidebar-toggle-width-offset);
+    border-radius: 4px;
+
+    &:hover {
+        background: var(--color-background-sidebar-action-heading-hover);
+        box-shadow: inset 0 0 0 1px var(--color-shadow-sidebar-row-hover);
+        color: var(--color-text-sidebar-action-heading-hover);
+    }
+
+    .subscribe-more-link {
+        display: grid;
+        grid-template:
+            "plus-icon row-text" var(--line-height-sidebar-row-prominent)
+            / auto 1fr;
+        align-items: center;
+        color: var(--color-text-sidebar-action-heading);
+        text-decoration: none;
+        font-size: var(--font-size-sidebar-action-heading);
+        font-weight: var(--font-weight-sidebar-action-heading);
+        font-variant: var(--font-variant-sidebar-action-heading);
+        font-feature-settings: var(
+            --font-feature-settings-sidebar-action-heading
+        );
+        text-transform: var(--text-transform-sidebar-action-heading);
+    }
+}
+
 #login-link-container,
 #subscribe-to-more-streams {
     text-decoration: none;
-    margin: 5px auto var(--left-sidebar-bottom-scrolling-buffer)
-        var(--left-sidebar-toggle-width-offset);
 
     .subscribe-more-icon {
         min-width: 19px;
@@ -432,6 +466,8 @@
     color: var(--color-text-url);
     display: flex;
     align-items: center;
+    margin: 5px auto var(--left-sidebar-bottom-scrolling-buffer)
+        var(--left-sidebar-toggle-width-offset);
 
     &:hover {
         cursor: pointer;
@@ -865,14 +901,13 @@ li.top_left_scheduled_messages {
     margin-right: 3px;
 }
 
-/* New .topic-box grid definitions here. */
+/* New grid definitions here. */
 #views-label-container,
 .zoom-in #hide-more-direct-messages,
 .top_left_row,
 .left-sidebar-navigation-label-container,
 .dm-box,
 .subscription_block,
-.topic-box,
 .searching-for-more-topics,
 .topic_search_section {
     display: grid;
@@ -930,10 +965,8 @@ li.top_left_scheduled_messages {
 #views-label-container {
     margin-right: var(--left-sidebar-right-margin);
     grid-template-columns:
-        0 var(--left-sidebar-header-icon-toggle-width) 0 minmax(0, 0.5fr) 0 minmax(
-            0,
-            1fr
-        )
+        0 var(--left-sidebar-header-icon-toggle-width) 0 minmax(0, 0.5fr)
+        0 minmax(0, 1fr)
         var(--left-sidebar-vdots-width) 0;
     grid-template-rows: 28px;
     cursor: pointer;
@@ -1079,10 +1112,15 @@ li.top_left_scheduled_messages {
 
 .topic-box,
 .searching-for-more-topics {
-    grid-template-columns:
-        0 var(--left-sidebar-icon-column-width) var(
-            --left-sidebar-icon-content-gap
+    display: grid;
+    grid-template:
+        "starting-offset starting-anchor-element icon-content-gap row-content controls markers-and-unreads ending-anchor-element ending-offset" var(
+            --line-height-sidebar-row-prominent
         )
+        ".               .                       .                row-content .        .                   .                     .            " auto / 0 var(
+            --left-sidebar-icon-column-width
+        )
+        var(--left-sidebar-icon-content-gap)
         minmax(0, 1fr) minmax(0, max-content) minmax(0, max-content)
         var(--left-sidebar-vdots-width) 0;
 }
@@ -1105,8 +1143,41 @@ li.top_left_scheduled_messages {
     display: none;
 }
 
-.sidebar-topic-name,
+.sidebar-topic-name {
+    cursor: pointer;
+    grid-area: row-content;
+    padding: 0 var(--left-sidebar-before-unread-count-padding) 0 0;
+
+    &:hover {
+        color: inherit;
+    }
+
+    &:focus {
+        text-decoration: none;
+    }
+
+    .sidebar-topic-name-inner {
+        /* Clamp multi-line topics to two lines. */
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
+        /* Break overflowing words as necessary. */
+        overflow-wrap: break-word;
+
+        line-height: var(--line-height-sidebar-topic-inner);
+        margin: var(--spacing-top-bottom-sidebar-topic-inner) 0;
+    }
+}
+
 .sidebar-topic-action-heading {
+    color: var(--color-text-sidebar-action-heading);
+    font-size: var(--font-size-sidebar-action-heading);
+    font-weight: var(--font-weight-sidebar-action-heading);
+    font-variant: var(--font-variant-sidebar-action-heading);
+    font-feature-settings: var(--font-feature-settings-sidebar-action-heading);
+    text-transform: var(--text-transform-sidebar-action-heading);
+
     cursor: pointer;
     grid-area: row-content;
     padding: 0 var(--left-sidebar-before-unread-count-padding) 0 0;
@@ -1124,26 +1195,9 @@ li.top_left_scheduled_messages {
     overflow-x: clip;
     text-overflow: ellipsis;
 
-    span.sidebar-topic-name-inner {
-        white-space: pre;
-    }
-
-    &:hover {
-        color: inherit;
-    }
-
     &:focus {
         text-decoration: none;
     }
-}
-
-.sidebar-topic-action-heading {
-    color: var(--color-text-sidebar-action-heading);
-    font-size: var(--font-size-sidebar-action-heading);
-    font-weight: var(--font-weight-sidebar-action-heading);
-    font-variant: var(--font-variant-sidebar-action-heading);
-    font-feature-settings: var(--font-feature-settings-sidebar-action-heading);
-    text-transform: var(--text-transform-sidebar-action-heading);
 
     &:hover {
         text-decoration: none;
@@ -1167,7 +1221,7 @@ li.top_left_scheduled_messages {
 
 .sidebar-topic-check {
     grid-area: starting-anchor-element;
-    justify-self: end;
+    place-self: center end;
     /* 15px at 14px/1em */
     font-size: 1.0714em;
     /* Use background to mask part of grouping bracket. */
@@ -1412,10 +1466,8 @@ li.topic-list-item {
         var(--left-sidebar-toggle-width-offset) [action-heading-start] var(
             --left-sidebar-icon-column-width
         )
-        var(--left-sidebar-icon-content-gap) minmax(0, 1fr) [action-heading-end] 0 minmax(
-            0,
-            max-content
-        )
+        var(--left-sidebar-icon-content-gap) minmax(0, 1fr)
+        [action-heading-end] 0 minmax(0, max-content)
         var(--left-sidebar-vdots-width) 0;
     grid-template-rows: [action-heading-start] auto [action-heading-end];
 

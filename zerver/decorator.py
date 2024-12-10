@@ -43,7 +43,7 @@ from zerver.lib.exceptions import (
     UserDeactivatedError,
     WebhookError,
 )
-from zerver.lib.queue import queue_json_publish
+from zerver.lib.queue import queue_json_publish_rollback_unsafe
 from zerver.lib.rate_limiter import is_local_addr, rate_limit_request_by_ip, rate_limit_user
 from zerver.lib.request import RequestNotes
 from zerver.lib.response import json_method_not_allowed
@@ -91,7 +91,7 @@ def update_user_activity(
         "time": datetime_to_timestamp(timezone_now()),
         "client_id": request_notes.client.id,
     }
-    queue_json_publish("user_activity", event, lambda event: None)
+    queue_json_publish_rollback_unsafe("user_activity", event, lambda event: None)
 
 
 # Based on django.views.decorators.http.require_http_methods
@@ -152,6 +152,24 @@ def require_realm_admin(
         **kwargs: ParamT.kwargs,
     ) -> HttpResponse:
         if not user_profile.is_realm_admin:
+            raise OrganizationAdministratorRequiredError
+        return func(request, user_profile, *args, **kwargs)
+
+    return wrapper
+
+
+def check_if_user_can_manage_default_streams(
+    func: Callable[Concatenate[HttpRequest, UserProfile, ParamT], HttpResponse],
+) -> Callable[Concatenate[HttpRequest, UserProfile, ParamT], HttpResponse]:
+    @wraps(func)
+    def wrapper(
+        request: HttpRequest,
+        user_profile: UserProfile,
+        /,
+        *args: ParamT.args,
+        **kwargs: ParamT.kwargs,
+    ) -> HttpResponse:
+        if not user_profile.can_manage_default_streams():
             raise OrganizationAdministratorRequiredError
         return func(request, user_profile, *args, **kwargs)
 

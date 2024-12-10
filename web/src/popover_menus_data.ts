@@ -3,30 +3,31 @@
 
 import assert from "minimalistic-assert";
 
-import * as resolved_topic from "../shared/src/resolved_topic";
+import * as resolved_topic from "../shared/src/resolved_topic.ts";
 
-import * as buddy_data from "./buddy_data";
-import * as gear_menu_util from "./gear_menu_util";
-import * as hash_util from "./hash_util";
-import {$t} from "./i18n";
-import * as message_edit from "./message_edit";
-import * as message_lists from "./message_lists";
-import * as muted_users from "./muted_users";
-import {page_params} from "./page_params";
-import * as people from "./people";
-import * as settings_config from "./settings_config";
-import type {ColorSchemeValues} from "./settings_config";
-import * as settings_data from "./settings_data";
-import * as starred_messages from "./starred_messages";
-import {current_user, realm} from "./state_data";
-import * as stream_data from "./stream_data";
-import * as sub_store from "./sub_store";
-import {num_unread_for_topic} from "./unread";
-import {user_settings} from "./user_settings";
-import * as user_status from "./user_status";
-import type {UserStatusEmojiInfo} from "./user_status";
-import * as user_topics from "./user_topics";
-import type {AllVisibilityPolicies} from "./user_topics";
+import * as buddy_data from "./buddy_data.ts";
+import * as gear_menu_util from "./gear_menu_util.ts";
+import * as hash_util from "./hash_util.ts";
+import {$t} from "./i18n.ts";
+import * as message_edit from "./message_edit.ts";
+import * as message_lists from "./message_lists.ts";
+import * as muted_users from "./muted_users.ts";
+import * as narrow_state from "./narrow_state.ts";
+import {page_params} from "./page_params.ts";
+import * as people from "./people.ts";
+import * as settings_config from "./settings_config.ts";
+import type {ColorSchemeValues} from "./settings_config.ts";
+import * as settings_data from "./settings_data.ts";
+import * as starred_messages from "./starred_messages.ts";
+import {current_user, realm} from "./state_data.ts";
+import * as stream_data from "./stream_data.ts";
+import * as sub_store from "./sub_store.ts";
+import {num_unread_for_topic} from "./unread.ts";
+import {user_settings} from "./user_settings.ts";
+import * as user_status from "./user_status.ts";
+import type {UserStatusEmojiInfo} from "./user_status.ts";
+import * as user_topics from "./user_topics.ts";
+import type {AllVisibilityPolicies} from "./user_topics.ts";
 
 type ActionPopoverContext = {
     message_id: number;
@@ -38,7 +39,7 @@ type ActionPopoverContext = {
     should_display_mark_as_unread: boolean;
     should_display_collapse: boolean;
     should_display_uncollapse: boolean;
-    should_display_quote_and_reply: boolean;
+    should_display_quote_message: boolean;
     conversation_time_url: string;
     should_display_delete_option: boolean;
     should_display_read_receipts_option: boolean;
@@ -52,6 +53,7 @@ type TopicPopoverContext = {
     topic_name: string;
     topic_unmuted: boolean;
     is_spectator: boolean;
+    is_topic_empty: boolean;
     can_move_topic: boolean;
     can_rename_topic: boolean;
     is_realm_admin: boolean;
@@ -189,7 +191,7 @@ export function get_actions_popover_content_context(message_id: number): ActionP
     const should_display_uncollapse =
         !message.locally_echoed && !message.is_me_message && message.collapsed;
 
-    const should_display_quote_and_reply = message.content !== "<p>(deleted)</p>" && not_spectator;
+    const should_display_quote_message = message.content !== "<p>(deleted)</p>" && not_spectator;
 
     const conversation_time_url = hash_util.by_conversation_and_time_url(message);
 
@@ -225,7 +227,7 @@ export function get_actions_popover_content_context(message_id: number): ActionP
         conversation_time_url,
         should_display_delete_option,
         should_display_read_receipts_option,
-        should_display_quote_and_reply,
+        should_display_quote_message,
     };
 }
 
@@ -248,6 +250,7 @@ export function get_topic_popover_content_context({
     const visibility_policy = user_topics.get_topic_visibility_policy(sub.stream_id, topic_name);
     const all_visibility_policies = user_topics.all_visibility_policies;
     const is_spectator = page_params.is_spectator;
+    const is_topic_empty = is_topic_definitely_empty(stream_id, topic_name);
     return {
         stream_name: sub.name,
         stream_id: sub.stream_id,
@@ -255,6 +258,7 @@ export function get_topic_popover_content_context({
         topic_name,
         topic_unmuted,
         is_spectator,
+        is_topic_empty,
         can_move_topic,
         can_rename_topic,
         is_realm_admin: current_user.is_admin,
@@ -356,4 +360,30 @@ export function get_gear_menu_content_context(): GearMenuContext {
         user_color_scheme: user_settings.color_scheme,
         color_scheme_values: settings_config.color_scheme_values,
     };
+}
+
+function is_topic_definitely_empty(stream_id: number, topic: string): boolean {
+    const current_narrow_stream_id = narrow_state.stream_id();
+    const current_narrow_topic = narrow_state.topic();
+
+    if (
+        current_narrow_stream_id === undefined ||
+        current_narrow_topic === undefined ||
+        current_narrow_stream_id !== stream_id ||
+        current_narrow_topic !== topic
+    ) {
+        return false;
+    }
+
+    const is_current_message_list_empty = message_lists.current?.data.empty();
+    if (!is_current_message_list_empty) {
+        return false;
+    }
+
+    const is_oldest_message_found = message_lists.current?.data.fetch_status.has_found_oldest();
+    if (!is_oldest_message_found) {
+        return false;
+    }
+
+    return true;
 }

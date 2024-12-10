@@ -56,7 +56,7 @@ from zerver.lib.topic_sqlalchemy import (
     topic_match_sa,
 )
 from zerver.lib.types import Validator
-from zerver.lib.user_topics import exclude_topic_mutes
+from zerver.lib.user_topics import exclude_stream_and_topic_mutes
 from zerver.lib.validator import (
     check_bool,
     check_required_string,
@@ -371,8 +371,12 @@ class NarrowBuilder:
         assert self.user_profile is not None
 
         if operand == "home":
-            conditions = exclude_muting_conditions(self.user_profile, [])
-            return query.where(and_(*conditions))
+            conditions = exclude_muting_conditions(
+                self.user_profile, [NarrowParameter(operator="in", operand="home")]
+            )
+            if conditions:
+                return query.where(maybe_negate(and_(*conditions)))
+            return query  # nocoverage
         elif operand == "all":
             return query
 
@@ -857,7 +861,8 @@ def ok_to_include_history(
         # that's a property on the UserMessage table.  There cannot be
         # historical messages in these cases anyway.
         for term in narrow:
-            if term.operator == "is" and term.operand not in {"resolved", "followed"}:
+            # NOTE: Needs to be in sync with `Filter.is_personal_filter`.
+            if term.operator == "is" and term.operand != "resolved":
                 include_history = False
 
     return include_history
@@ -873,13 +878,38 @@ def get_channel_from_narrow_access_unchecked(
     return None
 
 
+# This function verifies if the current narrow has the necessary
+# terms to point to a channel or a direct message conversation.
+def can_narrow_define_conversation(narrow: list[NarrowParameter]) -> bool:
+    contains_channel_term = False
+    contains_topic_term = False
+
+    for term in narrow:
+        if term.operator in ["dm", "pm-with"]:
+            return True
+
+        elif term.operator in ["stream", "channel"]:
+            contains_channel_term = True
+
+        elif term.operator == "topic":
+            contains_topic_term = True
+
+        if contains_channel_term and contains_topic_term:
+            return True
+
+    return False
+
+
 # This function implements the core logic of the `with` operator,
 # which is designed to support permanent links to a topic that
 # robustly function if the topic is moved.
 #
 # The with operator accepts a message ID as an operand. If the
 # message ID does not exist or is otherwise not accessible to the
-# current user, then it has no effect.
+# current user, then if the remaining narrow terms can point to
+# a conversation then the narrow corresponding to it is returned.
+# If the remaining terms can not point to a particular conversation,
+# then a BadNarrowOperatorError is raised.
 #
 # Otherwise, the narrow terms are mutated to remove any
 # channel/topic/dm operators, replacing them with the appropriate
@@ -893,6 +923,7 @@ def update_narrow_terms_containing_with_operator(
         return narrow
 
     with_operator_terms = list(filter(lambda term: term.operator == "with", narrow))
+    can_user_access_target_message = True
 
     if len(with_operator_terms) > 1:
         raise InvalidOperatorCombinationError(_("Duplicate 'with' operators."))
@@ -911,12 +942,22 @@ def update_narrow_terms_containing_with_operator(
         try:
             message = access_message(maybe_user_profile, message_id)
         except JsonableError:
-            return narrow
+            can_user_access_target_message = False
     else:
         try:
             message = access_web_public_message(realm, message_id)
         except MissingAuthenticationError:
+            can_user_access_target_message = False
+
+    # If the user can not access the target message we fall back to the
+    # conversation specified by those other operators if they're enough
+    # to specify a single conversation.
+    # Else, we raise a BadNarrowOperatorError.
+    if not can_user_access_target_message:
+        if can_narrow_define_conversation(narrow):
             return narrow
+        else:
+            raise BadNarrowOperatorError(_("Invalid 'with' operator"))
 
     # TODO: It would be better if the legacy names here are canonicalized
     # while building a NarrowParameter.
@@ -964,23 +1005,7 @@ def exclude_muting_conditions(
     except Stream.DoesNotExist:
         pass
 
-    # Channel-level muting only applies when looking at views that
-    # include multiple channels, since we do want users to be able to
-    # browser messages within a muted channel.
-    if channel_id is None:
-        rows = Subscription.objects.filter(
-            user_profile=user_profile,
-            active=True,
-            is_muted=True,
-            recipient__type=Recipient.STREAM,
-        ).values("recipient_id")
-        muted_recipient_ids = [row["recipient_id"] for row in rows]
-        if len(muted_recipient_ids) > 0:
-            # Only add the condition if we have muted channels to simplify/avoid warnings.
-            condition = not_(column("recipient_id", Integer).in_(muted_recipient_ids))
-            conditions.append(condition)
-
-    conditions = exclude_topic_mutes(conditions, user_profile, channel_id)
+    conditions = exclude_stream_and_topic_mutes(conditions, user_profile, channel_id)
 
     # Muted user logic for hiding messages is implemented entirely
     # client-side. This is by design, as it allows UI to hint that
